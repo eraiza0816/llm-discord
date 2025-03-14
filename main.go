@@ -409,7 +409,7 @@ func (jl *JsonLoad) GetCommandEmbed(command string) (map[string]interface{}, err
 		return nil, err
 	}
 
-    embedLoader, err := NewJsonLoader(embedPath)
+    embedLoader, err := NewJsonLoader("json/embed/" + embedPath)
     if err != nil {
         return nil, err
     }
