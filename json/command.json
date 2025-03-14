@@ -1,6 +1,8 @@
 {
-
     "chat": {
         "embed": ""
+    },
+    "about": {
+        "embed": "about"
     }
 }
