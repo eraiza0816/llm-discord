@@ -41,3 +41,22 @@
 - ドメインサービス:
   - Chat: Gemini APIとのやり取りを行うサービス
   - JsonLoad: JSONファイルの読み込みを行うサービス
+
+## ディレクトリ構成
+
+```
+.
+├── .env
+├── go.mod
+├── go.sum
+├── main_test.go
+├── main.go
+├── README.md
+├── docs
+│   └── docs.md （このファイル）
+├── json
+│   ├── command.json
+│   ├── model.json.sample
+│   └── embed
+│       └── about.json.sample
+└── log （ログ置き場）
