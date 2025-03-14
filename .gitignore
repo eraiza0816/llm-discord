@@ -1,0 +1,7 @@
+__pycache__/
+.env
+.mypy_cache/
+.venv/
+log/*.log
+json/model.json
+json/embed/about.json

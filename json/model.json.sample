@@ -1,0 +1,9 @@
+{
+    "name": "Gemini-Bot",
+    "model_name": "gemini-2.0-flash",
+    "icon": "https://cdn.discordapp.com/avatars/.png",
+
+    "prompts": {
+        "default": "You are a helpful assistant on Discord."
+    }
+}
