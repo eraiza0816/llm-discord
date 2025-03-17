@@ -13,6 +13,16 @@ type ModelConfig struct {
 	Prompts   map[string]string `json:"prompts"`
 }
 
+func (m *ModelConfig) GetPromptByUser(username string) string {
+	if m.Prompts != nil {
+		if prompt, exists := m.Prompts[username]; exists {
+			return prompt
+		}
+		return m.Prompts["default"]
+	}
+	return "You are a helpful assistant."
+}
+
 func LoadModelConfig(filepath string) (*ModelConfig, error) {
 	file, err := os.ReadFile(filepath)
 	if err != nil {

@@ -4,6 +4,8 @@
     "icon": "https://cdn.discordapp.com/avatars/.png",
 
     "prompts": {
-        "default": "You are a helpful assistant on Discord."
+        "default": "You are a helpful assistant on Discord.",
+        "otaku": "You are talking to your creator, otaku!",
+        "specialUser": "You are a funny and playful assistant."
     }
 }
