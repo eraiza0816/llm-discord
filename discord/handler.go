@@ -41,6 +41,9 @@ func interactionCreate(chatSvc chat.Service, modelCfg *loader.ModelConfig) func(
 
 			userPrompt := modelCfg.GetPromptByUser(username)
 
+			logMessage := fmt.Sprintf("User %s sent message: %s at %s", username, message, timestamp)
+			log.Printf(logMessage)
+
 			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 				Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
 				Data: &discordgo.InteractionResponseData{
@@ -92,7 +95,6 @@ func interactionCreate(chatSvc chat.Service, modelCfg *loader.ModelConfig) func(
 				log.Printf("InteractionResponseEdit error: %v", err)
 			}
 
-			// ログファイルにユーザー名を出力
 			log.Printf("User %s reset the chat history.", resetUsername)
 		}
 	}
