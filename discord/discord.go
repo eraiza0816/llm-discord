@@ -87,7 +87,7 @@ func StartBot(cfg *config.Config) error {
 		fmt.Printf("Bot is ready! %s#%s\n", s.State.User.Username, s.State.User.Discriminator)
 	})
 
-	log.Println("Bot is running. Press CTRL-C to exit.")
+	log.Println("Bot is running.")
 	fmt.Println("Bot is running. Press CTRL-C to exit.")
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
