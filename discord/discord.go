@@ -18,24 +18,20 @@ func StartBot(cfg *config.Config) error {
 		return err
 	}
 
-	// model.jsonから設定を読み込む
 	modelCfg, err := loader.LoadModelConfig("json/model.json")
 	if err != nil {
 		return err
 	}
 
-	// modelCfgからdefaultプロンプトを取得
 	defaultPrompt := modelCfg.Prompts["default"]
 
-	// 読み込んだ設定でChatサービスを作成
 	chatService, err := chat.NewChat(cfg.GeminiAPIKey, modelCfg.ModelName, defaultPrompt)
 	if err != nil {
 		return err
 	}
 	defer chatService.Close()
 
-	setupHandlers(session, chatService)
-
+	setupHandlers(session, chatService, modelCfg)
 	session.Identify.Intents = discordgo.IntentsGuildMessages | discordgo.IntentsDirectMessages | discordgo.IntentsMessageContent | discordgo.IntentsGuilds
 
 	if err := session.Open(); err != nil {

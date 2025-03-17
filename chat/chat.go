@@ -11,7 +11,7 @@ import (
 )
 
 type Service interface {
-	GetResponse(userID, username, message, timestamp string) (string, float64, error)
+	GetResponse(userID, username, message, timestamp, prompt string) (string, float64, error)
 	ClearHistory(userID string)
 	Close()
 }
@@ -40,17 +40,17 @@ func NewChat(token, model, defaultPrompt string) (Service, error) {
 	}, nil
 }
 
-func (c *Chat) GetResponse(userID, username, message, timestamp string) (string, float64, error) {
+func (c *Chat) GetResponse(userID, username, message, timestamp, prompt string) (string, float64, error) {
+	c.userHistoriesMutex.Lock()
+	defer c.userHistoriesMutex.Unlock()
+
 	if strings.ToLower(strings.TrimSpace(message)) == "/reset" {
 		c.ClearHistory(userID)
 		return "履歴をリセットしました！", 0, nil
 	}
 
-	c.userHistoriesMutex.Lock()
-	defer c.userHistoriesMutex.Unlock()
-
 	history := strings.Join(c.userHistories[userID], "\n")
-	fullInput := c.defaultPrompt + "\n" + history + "\n" + message
+	fullInput := prompt + "\n" + history + "\n" + message
 
 	ctx := context.Background()
 	start := time.Now()
@@ -64,7 +64,7 @@ func (c *Chat) GetResponse(userID, username, message, timestamp string) (string,
 
 	responseText := getResponseText(resp)
 
-	//20件のメッセージを保持
+	// 20件のメッセージ履歴を保持
 	c.userHistories[userID] = append(c.userHistories[userID], message, responseText)
 	if len(c.userHistories[userID]) > 20 {
 		c.userHistories[userID] = c.userHistories[userID][len(c.userHistories[userID])-20:]
@@ -72,6 +72,7 @@ func (c *Chat) GetResponse(userID, username, message, timestamp string) (string,
 
 	return responseText, elapsed, nil
 }
+
 
 func (c *Chat) ClearHistory(userID string) {
 	c.userHistoriesMutex.Lock()
