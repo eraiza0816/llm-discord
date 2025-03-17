@@ -10,6 +10,12 @@ func main() {
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
+		return
+	}
+
+	if cfg == nil {
+		log.Fatalf("Config is nil")
+		return
 	}
 
 	if err := discord.StartBot(cfg); err != nil {

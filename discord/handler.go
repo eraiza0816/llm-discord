@@ -1,9 +1,10 @@
 package discord
 
 import (
-	"log"
-	"time"
 	"fmt"
+	"log"
+	"os"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/eraiza0816/llm-discord/chat"
@@ -11,6 +12,12 @@ import (
 )
 
 func setupHandlers(s *discordgo.Session, chatSvc chat.Service, modelCfg *loader.ModelConfig) {
+	logFile, err := os.OpenFile("log/app.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatalf("Error opening file: %v", err)
+	}
+	log.SetOutput(logFile)
+
 	s.AddHandler(onReady)
 	s.AddHandler(interactionCreate(chatSvc, modelCfg))
 }
@@ -41,19 +48,52 @@ func interactionCreate(chatSvc chat.Service, modelCfg *loader.ModelConfig) func(
 				},
 			})
 
-			resp, elapsed, err := chatSvc.GetResponse(userID, username, message, timestamp, userPrompt)
+			response, _, err := chatSvc.GetResponse(userID, username, message, timestamp, userPrompt)
 			if err != nil {
 				log.Printf("GetResponse error: %v", err)
-				resp = "エラーが発生しました。"
+				content := fmt.Sprintf("エラーが発生しました: %v", err)
+				_, err := s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+					Content: &content,
+				})
+				if err != nil {
+					log.Printf("InteractionResponseEdit error: %v", err)
+				}
+				return
 			}
 
-			content := resp + "\n" + fmt.Sprintf("%.2fms", elapsed)
+			content := response
 			_, err = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
 				Content: &content,
 			})
 			if err != nil {
 				log.Printf("InteractionResponseEdit error: %v", err)
 			}
+		case "reset":
+			userID := i.Member.User.ID
+
+			resetUsername := i.Member.User.Username + "#" + i.Member.User.Discriminator
+			logMessage := fmt.Sprintf("User %s performed a reset operation.", resetUsername)
+			log.Printf(logMessage)
+
+			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+					Content: "履歴をリセットしています...",
+				},
+			})
+
+			chatSvc.ClearHistory(userID)
+
+			content := "チャット履歴をリセットしました！"
+			_, err := s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+				Content: &content,
+			})
+			if err != nil {
+				log.Printf("InteractionResponseEdit error: %v", err)
+			}
+
+			// ログファイルにユーザー名を出力
+			log.Printf("User %s reset the chat history.", resetUsername)
 		}
 	}
 }
