@@ -62,7 +62,8 @@ func StartBot(cfg *config.Config) error {
 
 	registeredCommands := make([]*discordgo.ApplicationCommand, len(commands))
 
-	if err := session.Open(); err != nil {
+	err = session.Open()
+	if err != nil {
 		log.Println("Error opening Discord session: ", err)
 		return err
 	}
