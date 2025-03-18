@@ -64,9 +64,35 @@ func interactionCreate(chatSvc chat.Service, modelCfg *loader.ModelConfig) func(
 				return
 			}
 
-			content := response
+			embed_user := &discordgo.MessageEmbed{
+				Author: &discordgo.MessageEmbedAuthor{
+					Name:    username,
+					IconURL: i.Member.User.AvatarURL(""),
+				},
+				Fields: []*discordgo.MessageEmbedField{
+					{
+						Value: message,
+					},
+				},
+				Color: 0x228B22, // Dev Green
+				// Color: 0x2ecc70, // Production Green
+			}
+			
+			embed_bot := &discordgo.MessageEmbed{
+				Author: &discordgo.MessageEmbedAuthor{
+					Name:    "ぺちこ",
+					IconURL: "https://cdn.discordapp.com/avatars/1303009280563085332/75f3aef8ac15796ee6949a578a334745.png",
+				},
+				Fields: []*discordgo.MessageEmbedField{
+					{
+						Value: response,
+					},
+				},
+				Color: 0xa8ffee, // pechiko color
+			}
+
 			_, err = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-				Content: &content,
+				Embeds: &[]*discordgo.MessageEmbed{embed_user, embed_bot},
 			})
 			if err != nil {
 				log.Printf("InteractionResponseEdit error: %v", err)
@@ -87,9 +113,12 @@ func interactionCreate(chatSvc chat.Service, modelCfg *loader.ModelConfig) func(
 
 			chatSvc.ClearHistory(userID)
 
-			content := "チャット履歴をリセットしました！"
+			embed := &discordgo.MessageEmbed{
+				Description: "チャット履歴をリセットしました！",
+				Color:       0xa8ffee,
+			}
 			_, err := s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-				Content: &content,
+				Embeds: &[]*discordgo.MessageEmbed{embed},
 			})
 			if err != nil {
 				log.Printf("InteractionResponseEdit error: %v", err)
