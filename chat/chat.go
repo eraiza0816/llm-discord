@@ -5,6 +5,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"fmt"
 
 	"github.com/google/generative-ai-go/genai"
 	"google.golang.org/api/option"
@@ -60,7 +61,7 @@ func (c *Chat) GetResponse(userID, username, message, timestamp, prompt string) 
 	elapsed := float64(time.Since(start).Milliseconds())
 
 	if err != nil {
-		return "エラーが発生しました。", elapsed, err
+		return "", elapsed, fmt.Errorf("Gemini APIからのエラー: %v", err)
 	}
 
 	responseText := getResponseText(resp)
