@@ -50,7 +50,8 @@ func (c *Chat) GetResponse(userID, username, message, timestamp, prompt string) 
 	}
 
 	history := strings.Join(c.userHistories[userID], "\n")
-	fullInput := prompt + "\n" + history + "\n" + message
+	currentTime := time.Now().Format("2006-01-02 15:04:05")
+	fullInput := prompt + "\n" + history + "\ndate time：" + currentTime + "\n" + message
 
 	ctx := context.Background()
 	start := time.Now()
