@@ -42,15 +42,16 @@ func NewChat(token, model, defaultPrompt string) (Service, error) {
 }
 
 func (c *Chat) GetResponse(userID, username, message, timestamp, prompt string) (string, float64, error) {
-	c.userHistoriesMutex.Lock()
-	defer c.userHistoriesMutex.Unlock()
-
+	var history string
 	if strings.ToLower(strings.TrimSpace(message)) == "/reset" {
 		c.ClearHistory(userID)
 		return "履歴をリセットしました！", 0, nil
 	}
 
-	history := strings.Join(c.userHistories[userID], "\n")
+	c.userHistoriesMutex.Lock()
+	history = strings.Join(c.userHistories[userID], "\n")
+	c.userHistoriesMutex.Unlock()
+
 	currentTime := time.Now().Format("2006-01-02 15:04:05")
 	fullInput := prompt + "\n" + history + "\ndate time：" + currentTime + "\n" + message
 
@@ -67,10 +68,12 @@ func (c *Chat) GetResponse(userID, username, message, timestamp, prompt string) 
 	responseText := getResponseText(resp)
 
 	// 20件のメッセージ履歴を保持
+	c.userHistoriesMutex.Lock()
 	c.userHistories[userID] = append(c.userHistories[userID], message, responseText)
 	if len(c.userHistories[userID]) > 20 {
 		c.userHistories[userID] = c.userHistories[userID][len(c.userHistories[userID])-20:]
 	}
+	c.userHistoriesMutex.Unlock()
 
 	return responseText, elapsed, nil
 }
