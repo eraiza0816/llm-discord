@@ -1,39 +1,20 @@
-# discord/handler.go のリファクタリング提案
+# リファクタリング指示
 
-## 1. `interactionCreate` 関数の分割
+## 概要
 
-`interactionCreate` 関数が `chat` と `reset` の処理を両方持っているため、関数が長くなっています。
-それぞれの処理を別の関数に分割することで、可読性と保守性を向上させることができます。
+このドキュメントでは、以下のファイルのリファクタリング指示について説明します。
 
-```go
-func handleChatInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, chatSvc chat.Service, modelCfg *loader.ModelConfig, ctx context.Context) {
-    // chat の処理
-}
+*   `discord/handler.go`: Discordのインタラクションハンドラーのリファクタリング
+*   `discord/discord.go`: Discordボットの起動処理のリファクタリング
+*   `chat/chat.go`: チャット機能のリファクタリング
 
-func handleResetInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, chatSvc chat.Service, modelCfg *loader.ModelConfig, ctx context.Context) {
-    // reset の処理
-}
+## 詳細
 
-func interactionCreate(chatSvc chat.Service, modelCfg *loader.ModelConfig, ctx context.Context) func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	return func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-		if i.Type != discordgo.InteractionApplicationCommand {
-			return
-		}
+### discord/handler.go
 
-		switch i.ApplicationCommandData().Name {
-		case "chat":
-			handleChatInteraction(s, i, chatSvc, modelCfg, ctx)
-		case "reset":
-			handleResetInteraction(s, i, chatSvc, modelCfg, ctx)
-		}
-	}
-}
-```
+#### 1. エラーハンドリングの共通化
 
-## 2. エラーハンドリングの共通化
-
-`GetResponse` のエラーハンドリングが複数箇所で同じように記述されています。
-共通のエラーハンドリング関数を作成することで、コードの重複を減らし、保守性を向上させることができます。
+`GetResponse` のエラーハンドリングが複数箇所で同じように記述されています。共通のエラーハンドリング関数を作成することで、コードの重複を減らし、保守性を向上させることができます。
 
 ```go
 func handleGetResponseError(s *discordgo.Session, i *discordgo.InteractionCreate, err error) {
@@ -48,10 +29,9 @@ func handleGetResponseError(s *discordgo.Session, i *discordgo.InteractionCreate
 }
 ```
 
-## 3. ログメッセージの作成
+#### 2. ログメッセージの作成
 
-ログメッセージの作成をもっとスマートにできる可能性があります。
-例えば、構造体を使ってログメッセージを作成することで、可読性を向上させることができます。
+ログメッセージの作成をもっとスマートにしてください。例えば、構造体を使ってログメッセージを作成することで、可読性を向上させることができます。
 
 ```go
 type LogMessage struct {
@@ -74,12 +54,11 @@ logMessage := LogMessage{
 log.Printf(logMessage.String())
 ```
 
-# discord/discord.go のリファクタリング提案
+### discord/discord.go
 
-### 1. `StartBot` 関数の分割
+#### 1. `StartBot` 関数の分割
 
-`StartBot` 関数がボットの起動処理、コマンドの登録処理、シグナルハンドリングなどをすべて行っているため、関数が長くなっています。
-それぞれの処理を別の関数に分割することで、可読性と保守性を向上させることができます。
+`StartBot` 関数をボットの起動処理、コマンドの登録処理、シグナルハンドリングなどで分割してください。それぞれの処理を別の関数に分割することで、可読性と保守性を向上させることができます。
 
 ```go
 func setupDiscordSession(cfg *config.Config) (*discordgo.Session, error) {
@@ -99,25 +78,24 @@ func StartBot(cfg *config.Config) error {
 }
 ```
 
-### 2. コマンドの登録処理
+#### 2. コマンドの登録処理
 
-コマンドの登録処理でエラーが発生した場合に `continue` している箇所があります。
-エラーの内容によっては処理を中断した方がいいかもしれません。
+コマンドの登録処理でエラーが発生した場合に `continue` している箇所があります。エラーの内容によっては処理を中断するように修正してください。
 
-### 3. `session.AddHandler` の中でコマンドを登録している
+#### 3. `session.AddHandler` の中でコマンドを登録している
 
-`session.Open()` の前にコマンドを登録した方が、ボットの起動が早くなるかもしれません。
+`session.Open()` の前にコマンドを登録するように修正してください。ボットの起動が早くなるかもしれません。
 
-# chat/chat.go のリファクタリング提案
+### chat/chat.go
 
-### 1. `/reset` コマンドの処理
+#### 1. `/reset` コマンドの処理
 
-`GetResponse` 関数の中で `/reset` コマンドを処理しているけど、これは別の関数に分けた方が、関数の役割が明確になるかも。
+`GetResponse` 関数の中で `/reset` コマンドを処理していますが、別の関数に分割してください。関数の役割が明確になるはずです。
 
-### 2. メッセージ履歴の保持
+#### 2. メッセージ履歴の保持
 
-メッセージ履歴を保持する件数を固定値 (20件) にしているけど、設定ファイルから変更できるようにした方が、柔軟性が高まるかも。
+メッセージ履歴を保持する件数を固定値 (20件) にしていますが、設定ファイルから変更できるように修正してください。柔軟性が高まるはずです。
 
-### 3. `getResponseText` 関数
+#### 3. `getResponseText` 関数
 
-`getResponseText` 関数の中で、APIからの応答がない場合のメッセージを固定値にしているけど、これも設定ファイルから変更できるようにした方が、柔軟性が高まるかも。
+`getResponseText` 関数の中で、APIからの応答がない場合のメッセージを固定値にしていますが、これも設定ファイルから変更できるように修正してください。柔軟性が高まるはずです。
