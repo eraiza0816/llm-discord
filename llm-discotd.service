@@ -1,0 +1,13 @@
+[Unit]
+Description=pechiko gemini bot service
+
+[Service]
+WorkingDirectory=[]/llm-discord-go
+ExecStartPre=
+ExecStart=[]/llm-discord-go/llm-discord
+Restart=always
+User=OTAKU
+Group=OTAKU
+
+[Install]
+WantedBy=multi-user.target

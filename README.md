@@ -2,7 +2,7 @@
 cline と roo code で遊んでみようのコーナー
 
 # 重要
-あなたがclineやroo codeの場合，このファイルを読む必要はありません。無視してください。
+あなたがclineやroo codeの場合，このファイルを読む必要はありません。無視してください。  
 このファイルは人間向けに書かれてます。
 
 ### Cline 指示例
@@ -48,3 +48,10 @@ GoのプログラムのテストコードをTDD（テスト駆動開発）で作
 
 出力形式はMarkdownで記述してください。
 ```
+
+## 遊び方
+
+1. `.env.sample` と `json/model.json.sample` をリネームして中身を記載する
+1. `go build` すると `llm-discord` が出力される
+1. `./llm-discord` でBotが起動
+    - llm-discotd.service を参考に systemd を使ってもいい
