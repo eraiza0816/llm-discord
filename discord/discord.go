@@ -60,18 +60,18 @@ func StartBot(cfg *config.Config) error {
 			Name:        "about",
 			Description: "このBotについて",
 		},
-		// {
-		// 	Name:        "edit",
-		// 	Description: "プロンプトテンプレートをあなたの好みに編集",
-		// 	Options: []*discordgo.ApplicationCommandOption{
-		// 		{
-		// 			Type:        discordgo.ApplicationCommandOptionString,
-		// 			Name:        "set prompt",
-		// 			Description: "プロンプトテンプレートを入力",
-		// 			Required:    true,
-		// 		},
-		// 	},
-		// },
+		{
+			Name:        "edit",
+			Description: "プロンプトテンプレートをあなたの好みに編集",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "set_prompt",
+					Description: "プロンプトテンプレートを入力",
+					Required:    true,
+				},
+			},
+		},
 	}
 
 	session.Identify.Intents = discordgo.IntentsGuildMessages | discordgo.IntentsDirectMessages | discordgo.IntentsMessageContent | discordgo.IntentsGuilds
@@ -101,7 +101,11 @@ func StartBot(cfg *config.Config) error {
 			registeredCommands[i] = cmd
 		}
 		for _, v := range registeredCommands {
-			log.Printf("Successfully created '%v' command.", v.Name)
+			if v != nil {
+				log.Printf("Successfully created '%v' command.", v.Name)
+			} else {
+				log.Printf("Failed to register one of the commands (was nil)")
+			}
 		}
 		log.Printf("Registered commands: %v", registeredCommands)
 	} else {
@@ -112,7 +116,7 @@ func StartBot(cfg *config.Config) error {
 
 	session.AddHandler(func(s *discordgo.Session, r *discordgo.Ready) {
 		log.Println("session.AddHandler called")
-		fmt.Printf("Bot is ready! %s#%s\n", s.State.User.Username, s.State.User.Discriminator)
+		fmt.Printf("Bot is ready! %s#%s\n", r.User.Username, r.User.Discriminator)
 	})
 
 	log.Println("Bot is running.")
