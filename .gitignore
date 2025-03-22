@@ -6,3 +6,4 @@ log/*.log
 json/model.json
 json/embed/about.json
 llm-discord
+talk-rule.txt

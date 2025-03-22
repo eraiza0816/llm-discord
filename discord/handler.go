@@ -94,13 +94,16 @@ func interactionCreate(chatSvc chat.Service, modelCfg *loader.ModelConfig) func(
 						Value: message,
 					},
 				},
-				Color: 0x228B22,
+				Color: 0xfff9b7,
 			}
+
+			modelName := modelCfg.Name
+			modelIconURL := modelCfg.Icon
 
 			embed_bot := &discordgo.MessageEmbed{
 				Author: &discordgo.MessageEmbedAuthor{
-					Name:    "ぺちこ",
-					IconURL: "https://cdn.discordapp.com/avatars/1303009280563085332/75f3aef8ac15796ee6949a578a334745.png",
+					Name:    modelName,
+					IconURL: modelIconURL,
 				},
 				Fields: splitToEmbedFields(response),
 				Color:  0xa8ffee,
