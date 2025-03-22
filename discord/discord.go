@@ -42,7 +42,7 @@ func StartBot(cfg *config.Config) error {
 	commands := []*discordgo.ApplicationCommand{
 		{
 			Name:        "chat",
-			Description: "おしゃべりしようよ dev",
+			Description: "おしゃべりしようよ",
 			Options: []*discordgo.ApplicationCommandOption{
 				{
 					Type:        discordgo.ApplicationCommandOptionString,
@@ -54,7 +54,7 @@ func StartBot(cfg *config.Config) error {
 		},
 		{
 			Name:        "reset",
-			Description: "あなたとのチャット履歴をリセット dev",
+			Description: "あなたとのチャット履歴をリセット",
 		},
 	}
 

@@ -61,7 +61,7 @@ func interactionCreate(chatSvc chat.Service, modelCfg *loader.ModelConfig) func(
 
 			userPrompt := modelCfg.GetPromptByUser(username)
 
-			logMessage := fmt.Sprintf("User %s sent message: %s at %s", username, message, timestamp)
+			logMessage := fmt.Sprintf("User %s sent message: %s ", username, message)
 			log.Printf(logMessage)
 
 			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
