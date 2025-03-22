@@ -62,12 +62,12 @@ func StartBot(cfg *config.Config) error {
 		},
 		{
 			Name:        "edit",
-			Description: "プロンプトテンプレートを編集",
+			Description: "プロンプトテンプレートをあなたの好みに編集",
 			Options: []*discordgo.ApplicationCommandOption{
 				{
 					Type:        discordgo.ApplicationCommandOptionString,
-					Name:        "prompt",
-					Description: "プロンプトテンプレート",
+					Name:        "set prompt",
+					Description: "プロンプトテンプレートを入力",
 					Required:    true,
 				},
 			},
@@ -91,18 +91,22 @@ func StartBot(cfg *config.Config) error {
 		log.Println("session.State or session.State.User is nil")
 		return errors.New("session.State or session.State.User is nil")
 	}
-	for i, v := range commands {
-		cmd, err := session.ApplicationCommandCreate(session.State.User.ID, "", v)
-		if err != nil {
-			log.Printf("Can not create '%v' command: %v", v.Name, err)
-			continue
+	if session.State != nil && session.State.User != nil {
+		for i, v := range commands {
+			cmd, err := session.ApplicationCommandCreate(session.State.User.ID, "", v)
+			if err != nil {
+				log.Printf("Can not create '%v' command: %v", v.Name, err)
+				continue
+			}
+			registeredCommands[i] = cmd
 		}
-		registeredCommands[i] = cmd
+		for _, v := range registeredCommands {
+			log.Printf("Successfully created '%v' command.", v.Name)
+		}
+		log.Printf("Registered commands: %v", registeredCommands)
+	} else {
+		log.Println("session.State or session.State.User is nil, skipping command registration")
 	}
-	for _, v := range registeredCommands {
-		log.Printf("Successfully created '%v' command.", v.Name)
-	}
-	log.Printf("Registered commands: %v", registeredCommands)
 
 	setupHandlers(session, chatService, modelCfg)
 
@@ -112,7 +116,6 @@ func StartBot(cfg *config.Config) error {
 	})
 
 	log.Println("Bot is running.")
-	fmt.Println("Bot is running. Press CTRL-C to exit.")
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
 	<-sc
