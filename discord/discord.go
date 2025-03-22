@@ -60,18 +60,18 @@ func StartBot(cfg *config.Config) error {
 			Name:        "about",
 			Description: "このBotについて",
 		},
-		{
-			Name:        "edit",
-			Description: "プロンプトテンプレートをあなたの好みに編集",
-			Options: []*discordgo.ApplicationCommandOption{
-				{
-					Type:        discordgo.ApplicationCommandOptionString,
-					Name:        "set prompt",
-					Description: "プロンプトテンプレートを入力",
-					Required:    true,
-				},
-			},
-		},
+		// {
+		// 	Name:        "edit",
+		// 	Description: "プロンプトテンプレートをあなたの好みに編集",
+		// 	Options: []*discordgo.ApplicationCommandOption{
+		// 		{
+		// 			Type:        discordgo.ApplicationCommandOptionString,
+		// 			Name:        "set prompt",
+		// 			Description: "プロンプトテンプレートを入力",
+		// 			Required:    true,
+		// 		},
+		// 	},
+		// },
 	}
 
 	session.Identify.Intents = discordgo.IntentsGuildMessages | discordgo.IntentsDirectMessages | discordgo.IntentsMessageContent | discordgo.IntentsGuilds
