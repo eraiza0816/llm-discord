@@ -11,6 +11,8 @@
 - チャット履歴のリセット機能: ユーザーは`/reset`コマンドを使用してチャット履歴をクリアできます。
 - BOTの説明表示機能: `/about`コマンドで、json/model.json に定義されたBOTの説明を表示します。
 - プロンプト編集機能: ユーザーは`/edit`コマンドを使用してプロンプトを編集できます。
+  - `/edit`コマンドが空の場合、custom_model.json から該当ユーザーの行を削除します。
+  - `/edit`コマンドで"delete"と送信された場合、custom_model.json から該当ユーザーの行を削除します。
 
 ## ドメインに関する用語（ユビキタス言語）
 
@@ -129,6 +131,7 @@
   - 役割: `/edit`コマンドの処理を行う。
   - 処理:
     - ユーザーから`/edit`コマンドを受け取り、`json/custom_model.json`にプロンプトを書き込む。
+    - `/edit`コマンドが空の場合、または"delete"と送信された場合、`json/custom_model.json`から該当ユーザーの行を削除する。
 
 - **discord/handler.go:**
   - 役割: Discordのコマンドハンドラーを定義する。
@@ -140,4 +143,4 @@
     - `aboutCommandHandler(s, i, modelCfg)`: `/about`コマンドの処理を行う。
 
 ## 今後の展望
-- ユーザから /edit で delete と送られてきた際に，custom_model.json の該当するユーザの行を削除する機能を追加実装
+-

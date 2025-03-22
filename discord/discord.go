@@ -66,8 +66,8 @@ func StartBot(cfg *config.Config) error {
 			Options: []*discordgo.ApplicationCommandOption{
 				{
 					Type:        discordgo.ApplicationCommandOptionString,
-					Name:        "set_prompt",
-					Description: "プロンプトテンプレートを入力",
+					Name:        "set_custom_prompt",
+					Description: "カスタムテンプレートを入力(deleteで削除)",
 					Required:    true,
 				},
 			},
