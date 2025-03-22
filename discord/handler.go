@@ -11,6 +11,26 @@ import (
 	"github.com/eraiza0816/llm-discord/loader"
 )
 
+func splitToEmbedFields(text string) []*discordgo.MessageEmbedField {
+	const maxFieldLength = 1024
+	var fields []*discordgo.MessageEmbedField
+
+	for i := 0; i < len(text); i += maxFieldLength {
+		end := i + maxFieldLength
+		if end > len(text) {
+			end = len(text)
+		}
+		chunk := text[i:end]
+		field := &discordgo.MessageEmbedField{
+			Name:   "",
+			Value:  chunk,
+			Inline: false,
+		}
+		fields = append(fields, field)
+	}
+	return fields
+}
+
 func setupHandlers(s *discordgo.Session, chatSvc chat.Service, modelCfg *loader.ModelConfig) {
 	logFile, err := os.OpenFile("log/app.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
@@ -74,21 +94,16 @@ func interactionCreate(chatSvc chat.Service, modelCfg *loader.ModelConfig) func(
 						Value: message,
 					},
 				},
-				Color: 0x228B22, // Dev Green
-				// Color: 0x2ecc70, // Production Green
+				Color: 0x228B22,
 			}
-			
+
 			embed_bot := &discordgo.MessageEmbed{
 				Author: &discordgo.MessageEmbedAuthor{
 					Name:    "ぺちこ",
 					IconURL: "https://cdn.discordapp.com/avatars/1303009280563085332/75f3aef8ac15796ee6949a578a334745.png",
 				},
-				Fields: []*discordgo.MessageEmbedField{
-					{
-						Value: response,
-					},
-				},
-				Color: 0xa8ffee, // pechiko color
+				Fields: splitToEmbedFields(response),
+				Color:  0xa8ffee,
 			}
 
 			_, err = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{

@@ -5,3 +5,4 @@ __pycache__/
 log/*.log
 json/model.json
 json/embed/about.json
+llm-discord
