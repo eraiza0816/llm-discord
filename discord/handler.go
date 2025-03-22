@@ -1,6 +1,7 @@
 package discord
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -10,6 +11,10 @@ import (
 	"github.com/eraiza0816/llm-discord/chat"
 	"github.com/eraiza0816/llm-discord/loader"
 )
+
+type CustomModelConfig struct {
+	Prompts map[string]string `json:"prompts"`
+}
 
 func splitToEmbedFields(text string) []*discordgo.MessageEmbedField {
 	const maxFieldLength = 1024
@@ -51,6 +56,8 @@ func setupHandlers(s *discordgo.Session, chatSvc chat.Service, modelCfg *loader.
 			resetCommandHandler(s, i, chatSvc)
 		case "about":
 			aboutCommandHandler(s, i, modelCfg)
+		case "edit":
+			editCommandHandler(s, i)
 		}
 	})
 }
@@ -59,28 +66,62 @@ func onReady(s *discordgo.Session, event *discordgo.Ready) {
 	log.Printf("Bot is ready! %s#%s", s.State.User.Username, s.State.User.Discriminator)
 }
 
-func chatCommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate, chatSvc chat.Service, _ *loader.ModelConfig) {
+func chatCommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate, chatSvc chat.Service, modelCfg *loader.ModelConfig) {
 	username := i.Member.User.Username
 	message := i.ApplicationCommandData().Options[0].StringValue()
 	timestamp := time.Now().Format(time.RFC3339)
+	userID := i.Member.User.ID
 
-	modelCfg, err := loader.LoadModelConfig("json/model.json")
-	if err != nil {
-		log.Printf("LoadModelConfig error: %v", err)
-		content := fmt.Sprintf("エラーが発生しました（設定ファイル読み込み失敗）: %v", err)
-		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: content,
-			},
-		})
-		return
+	var userPrompt string
+	if _, err := os.Stat("json/custom_model.json"); err == nil {
+		file, err := os.ReadFile("json/custom_model.json")
+		if err != nil {
+			log.Printf("LoadModelConfig error: %v", err)
+			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+					Content: fmt.Sprintf("エラーが発生しました（設定ファイル読み込み失敗）: %v", err),
+				},
+			})
+			return
+		}
+
+		customModelCfg := CustomModelConfig{}
+		if err := json.Unmarshal(file, &customModelCfg); err == nil {
+			if prompt, exists := customModelCfg.Prompts[username]; exists {
+				userPrompt = prompt
+			} else {
+				log.Printf("Prompt not found for user %s", username)
+				modelCfg, err := loader.LoadModelConfig("json/model.json")
+				if err != nil {
+					s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+						Type: discordgo.InteractionResponseChannelMessageWithSource,
+						Data: &discordgo.InteractionResponseData{
+							Content: fmt.Sprintf("エラーが発生しました（設定ファイル読み込み失敗）: %v", err),
+						},
+					})
+					return
+				}
+				userPrompt = modelCfg.GetPromptByUser(username)
+			}
+		} else {
+			log.Printf("json.Unmarshal error: %v", err)
+		}
+	} else {
+		modelCfg, err := loader.LoadModelConfig("json/model.json")
+		if err != nil {
+			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+					Content: fmt.Sprintf("エラーが発生しました（設定ファイル読み込み失敗）: %v", err),
+				},
+			})
+			return
+		}
+		userPrompt = modelCfg.GetPromptByUser(username)
 	}
 
-	userPrompt := modelCfg.GetPromptByUser(username)
-
-	logMessage := fmt.Sprintf("User %s sent message: %s ", username, message)
-	log.Printf(logMessage)
+	log.Printf("User %s sent message: %s ", username, message)
 
 	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
@@ -89,7 +130,6 @@ func chatCommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate, ch
 		},
 	})
 
-	userID := i.Member.User.ID
 	response, _, err := chatSvc.GetResponse(userID, username, message, timestamp, userPrompt)
 	if err != nil {
 		log.Printf("GetResponse error: %v", err)
@@ -109,9 +149,7 @@ func chatCommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate, ch
 			IconURL: i.Member.User.AvatarURL(""),
 		},
 		Fields: []*discordgo.MessageEmbedField{
-			{
-				Value: message,
-			},
+			{Value: message},
 		},
 		Color: 0xfff9b7,
 	}
@@ -135,10 +173,8 @@ func chatCommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate, ch
 
 func resetCommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate, chatSvc chat.Service) {
 	userID := i.Member.User.ID
-
 	resetUsername := i.Member.User.Username + "#" + i.Member.User.Discriminator
-	logMessage := fmt.Sprintf("User %s performed a reset operation.", resetUsername)
-	log.Printf(logMessage)
+	log.Printf("User %s performed a reset operation.", resetUsername)
 
 	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
@@ -159,15 +195,11 @@ func resetCommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate, c
 	if err != nil {
 		log.Printf("InteractionResponseEdit error: %v", err)
 	}
-
-	log.Printf("User %s reset the chat history.", resetUsername)
 }
 
 func aboutCommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate, modelCfg *loader.ModelConfig) {
 	username := i.Member.User.Username
-
-	logMessage := fmt.Sprintf("User %s performed an about operation.", username)
-	log.Printf(logMessage)
+	log.Printf("User %s performed an about operation.", username)
 
 	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
@@ -202,6 +234,50 @@ func aboutCommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate, m
 	if err != nil {
 		log.Printf("InteractionResponseEdit error: %v", err)
 	}
+}
 
-	log.Printf("User %s performed an about operation.", username)
+func editCommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	log.Printf("editCommandHandler called")
+	username := i.Member.User.Username
+	prompt := i.ApplicationCommandData().Options[0].StringValue()
+
+	var customModelCfg CustomModelConfig
+	if data, err := os.ReadFile("json/custom_model.json"); err == nil {
+		json.Unmarshal(data, &customModelCfg)
+	} else {
+		customModelCfg = CustomModelConfig{Prompts: make(map[string]string)}
+	}
+
+	customModelCfg.Prompts[username] = prompt
+
+	jsonBytes, err := json.MarshalIndent(customModelCfg, "", "  ")
+	if err != nil {
+		log.Printf("json.Marshal error: %v", err)
+		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: fmt.Sprintf("エラーが発生しました: %v", err),
+			},
+		})
+		return
+	}
+
+	err = os.WriteFile("json/custom_model.json", jsonBytes, 0644)
+	if err != nil {
+		log.Printf("os.WriteFile error: %v", err)
+		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: fmt.Sprintf("エラーが発生しました: %v", err),
+			},
+		})
+		return
+	}
+
+	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Content: "プロンプトテンプレートを更新しました！",
+		},
+	})
 }
