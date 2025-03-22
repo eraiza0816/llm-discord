@@ -11,6 +11,13 @@ type ModelConfig struct {
 	ModelName string            `json:"model_name"`
 	Icon      string            `json:"icon"`
 	Prompts   map[string]string `json:"prompts"`
+	About     About             `json:"about"`
+}
+
+type About struct {
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	URL         string `json:"url"`
 }
 
 func (m *ModelConfig) GetPromptByUser(username string) string {

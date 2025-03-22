@@ -56,6 +56,10 @@ func StartBot(cfg *config.Config) error {
 			Name:        "reset",
 			Description: "あなたとのチャット履歴をリセット",
 		},
+		{
+			Name:        "about",
+			Description: "このBotについて",
+		},
 	}
 
 	session.Identify.Intents = discordgo.IntentsGuildMessages | discordgo.IntentsDirectMessages | discordgo.IntentsMessageContent | discordgo.IntentsGuilds

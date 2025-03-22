@@ -4,8 +4,13 @@
     "icon": "https://cdn.discordapp.com/avatars/.png",
 
     "prompts": {
-        "default": "You are a helpful assistant on Discord.",
-        "otaku": "You are talking to your creator, otaku!",
-        "specialUser": "You are a funny and playful assistant."
+        "default": "あなたは親切なDiscord Botです",
+        "otaku1": "あなたはオタクにやさしいギャルのようにユーザと会話します",
+        "specialUser1": "あなたはとても丁寧に会話します。"
+    },
+    "about": {
+        "title": "llm-discord (Github)🔗",
+        "description": "大規模言語モデルになっちゃった！ \n いったいこれからどうなっちゃうの～？？",
+        "url": "https://github.com/eraiza0816/llm-discord"
     }
 }
