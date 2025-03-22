@@ -1,8 +1,8 @@
-# DDDドキュメント
+# ドメイン駆動設計 ドキュメント
 
 ## プロジェクトの目的と概要
 
-このプロジェクトは、Discord上でGoogleのGeminiとチャットできるDiscord Bot「ぺちこ」です。
+このプロジェクトは、Discord上でGoogle製LLMのGeminiとチャットできるDiscord Bot「ぺちこ」を開発しています。
 ユーザーはDiscordのインターフェースを通じてGemini (gemini-2.0-flash) と対話できます。
 
 ## 主要な機能
@@ -144,4 +144,5 @@
     - `aboutCommandHandler(s, i, modelCfg)`: `/about`コマンドの処理を行う。
 
 ## 今後の展望
--
+- 検索機能を持たせる。GeminiのグラウンディングAPI を使って，ユーザーからの質問を受け付けて，検索結果とGeminiの応答を組み合わせて、ユーザーに回答する
+
