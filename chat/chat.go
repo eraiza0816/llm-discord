@@ -2,10 +2,10 @@ package chat
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
-	"fmt"
 
 	"github.com/google/generative-ai-go/genai"
 	"google.golang.org/api/option"
@@ -18,10 +18,10 @@ type Service interface {
 }
 
 type Chat struct {
-	genaiClient       *genai.Client
-	genaiModel        *genai.GenerativeModel
-	defaultPrompt     string
-	userHistories     map[string][]string
+	genaiClient        *genai.Client
+	genaiModel         *genai.GenerativeModel
+	defaultPrompt      string
+	userHistories      map[string][]string
 	userHistoriesMutex sync.Mutex
 }
 
@@ -77,7 +77,6 @@ func (c *Chat) GetResponse(userID, username, message, timestamp, prompt string) 
 
 	return responseText, elapsed, nil
 }
-
 
 func (c *Chat) ClearHistory(userID string) {
 	c.userHistoriesMutex.Lock()
