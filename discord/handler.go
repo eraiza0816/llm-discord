@@ -30,7 +30,7 @@ func setupHandlers(s *discordgo.Session, chatSvc chat.Service, modelCfg *loader.
 		case "about":
 			aboutCommandHandler(s, i, modelCfg)
 		case "edit":
-			editCommandHandler(s, i)
+			editCommandHandler(s, i, chatSvc)
 		}
 	})
 }

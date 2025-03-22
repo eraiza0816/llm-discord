@@ -62,7 +62,7 @@ func StartBot(cfg *config.Config) error {
 		},
 		{
 			Name:        "edit",
-			Description: "プロンプトテンプレートをあなたの好みに編集",
+			Description: "カスタムテンプレートであなたの好みに編集",
 			Options: []*discordgo.ApplicationCommandOption{
 				{
 					Type:        discordgo.ApplicationCommandOptionString,
