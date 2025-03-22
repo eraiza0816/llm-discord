@@ -122,7 +122,10 @@
   - 役割: Discordのコマンドハンドラーを定義する。
   - 処理:
     - `interactionCreate(chatSvc, modelCfg)`: コマンドハンドラーを登録する。
-    - `interactionHandler(s, i, chatSvc, modelCfg)`: `/chat`、`/reset`、`/about`などのコマンド処理を行う。
+    - `interactionHandler(s, i, chatSvc, modelCfg)`: `/chat`、`/reset`、`/about`などのコマンド処理を個別のハンドラー関数に委譲する。
+    - `chatCommandHandler(s, i, chatSvc, modelCfg)`: `/chat`コマンドの処理を行う。
+    - `resetCommandHandler(s, i, chatSvc)`: `/reset`コマンドの処理を行う。
+    - `aboutCommandHandler(s, i, modelCfg)`: `/about`コマンドの処理を行う。
 
 ## 今後の展望
 
