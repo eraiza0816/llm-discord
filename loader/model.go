@@ -8,10 +8,11 @@ import (
 
 type ModelConfig struct {
 	Name      string            `json:"name"`
-	ModelName string            `json:"model_name"`
-	Icon      string            `json:"icon"`
-	Prompts   map[string]string `json:"prompts"`
-	About     About             `json:"about"`
+	ModelName     string            `json:"model_name"`
+	Icon          string            `json:"icon"`
+	MaxHistorySize int               `json:"max_history_size"`
+	Prompts       map[string]string `json:"prompts"`
+	About         About             `json:"about"`
 }
 
 type About struct {

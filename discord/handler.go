@@ -10,6 +10,11 @@ import (
 )
 
 func setupHandlers(s *discordgo.Session, chatSvc chat.Service, modelCfg *loader.ModelConfig) {
+	err := os.MkdirAll("log", 0755)
+	if err != nil {
+		log.Fatalf("Error creating directory: %v", err)
+	}
+
 	logFile, err := os.OpenFile("log/app.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		log.Fatalf("Error opening file: %v", err)
@@ -29,8 +34,8 @@ func setupHandlers(s *discordgo.Session, chatSvc chat.Service, modelCfg *loader.
 			resetCommandHandler(s, i, chatSvc)
 		case "about":
 			aboutCommandHandler(s, i, modelCfg)
-		// case "edit":
-		// 	editCommandHandler(s, i)
+		case "edit":
+			editCommandHandler(s, i, chatSvc)
 		}
 	})
 }

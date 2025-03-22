@@ -2,6 +2,7 @@
     "name": "Gemini-Bot",
     "model_name": "gemini-2.0-flash",
     "icon": "https://cdn.discordapp.com/avatars/.png",
+    "max_history_size": 20,
 
     "prompts": {
         "default": "あなたは親切なDiscord Botです",
