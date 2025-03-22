@@ -15,6 +15,8 @@ import (
 )
 
 func StartBot(cfg *config.Config) error {
+	log.SetOutput(os.Stdout)
+	log.Println("StartBot called")
 	if cfg == nil {
 		return errors.New("Config is nil")
 	}
@@ -37,8 +39,6 @@ func StartBot(cfg *config.Config) error {
 	}
 	defer chatService.Close()
 
-	setupHandlers(session, chatService, modelCfg)
-
 	commands := []*discordgo.ApplicationCommand{
 		{
 			Name:        "chat",
@@ -60,6 +60,18 @@ func StartBot(cfg *config.Config) error {
 			Name:        "about",
 			Description: "このBotについて",
 		},
+		// {
+		// 	Name:        "edit",
+		// 	Description: "プロンプトテンプレートをあなたの好みに編集",
+		// 	Options: []*discordgo.ApplicationCommandOption{
+		// 		{
+		// 			Type:        discordgo.ApplicationCommandOptionString,
+		// 			Name:        "set prompt",
+		// 			Description: "プロンプトテンプレートを入力",
+		// 			Required:    true,
+		// 		},
+		// 	},
+		// },
 	}
 
 	session.Identify.Intents = discordgo.IntentsGuildMessages | discordgo.IntentsDirectMessages | discordgo.IntentsMessageContent | discordgo.IntentsGuilds
@@ -73,13 +85,15 @@ func StartBot(cfg *config.Config) error {
 	}
 	defer session.Close()
 
-	session.AddHandler(func(s *discordgo.Session, r *discordgo.Ready) {
-		if s.State == nil || s.State.User == nil {
-			log.Println("s.State or s.State.User is nil")
-			return
-		}
+	log.Printf("session.State: %v", session.State)
+	log.Printf("session.State.User: %v", session.State.User)
+	if session.State == nil || session.State.User == nil {
+		log.Println("session.State or session.State.User is nil")
+		return errors.New("session.State or session.State.User is nil")
+	}
+	if session.State != nil && session.State.User != nil {
 		for i, v := range commands {
-			cmd, err := s.ApplicationCommandCreate(s.State.User.ID, "", v)
+			cmd, err := session.ApplicationCommandCreate(session.State.User.ID, "", v)
 			if err != nil {
 				log.Printf("Can not create '%v' command: %v", v.Name, err)
 				continue
@@ -89,11 +103,19 @@ func StartBot(cfg *config.Config) error {
 		for _, v := range registeredCommands {
 			log.Printf("Successfully created '%v' command.", v.Name)
 		}
+		log.Printf("Registered commands: %v", registeredCommands)
+	} else {
+		log.Println("session.State or session.State.User is nil, skipping command registration")
+	}
+
+	setupHandlers(session, chatService, modelCfg)
+
+	session.AddHandler(func(s *discordgo.Session, r *discordgo.Ready) {
+		log.Println("session.AddHandler called")
 		fmt.Printf("Bot is ready! %s#%s\n", s.State.User.Username, s.State.User.Discriminator)
 	})
 
 	log.Println("Bot is running.")
-	fmt.Println("Bot is running. Press CTRL-C to exit.")
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
 	<-sc

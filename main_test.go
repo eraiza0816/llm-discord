@@ -13,8 +13,8 @@ func TestEnvFileExists(t *testing.T) {
 }
 
 func TestJsonFileExists(t *testing.T) {
-	// json/command.jsonファイルが存在するかテスト
-	if _, err := os.Stat("json/command.json"); os.IsNotExist(err) {
-		t.Errorf("json/command.json file does not exist")
+	// json/model.jsonファイルが存在するかテスト
+	if _, err := os.Stat("json/model.json"); os.IsNotExist(err) {
+		t.Errorf("json/model.json file does not exist")
 	}
 }
