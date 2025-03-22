@@ -4,5 +4,5 @@ __pycache__/
 .venv/
 log/*.log
 json/model.json
-json/embed/about.json
+json/custom_model.json
 llm-discord
