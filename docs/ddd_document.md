@@ -2,14 +2,15 @@
 
 ## プロジェクトの目的と概要
 
-このプロジェクトは、Discord上でGoogleのGeminiとチャットできるDiscord Botです。
-ユーザーはDiscordのインターフェースを通じてGeminiと対話できます。
+このプロジェクトは、Discord上でGoogleのGeminiとチャットできるDiscord Bot「ぺちこ」です。
+ユーザーはDiscordのインターフェースを通じてGemini (gemini-2.0-flash) と対話できます。
 
 ## 主要な機能
 
 - Geminiとのチャット機能: ユーザーはテキストメッセージを送信し、Geminiからの応答を受信できます。
 - チャット履歴のリセット機能: ユーザーは`/reset`コマンドを使用してチャット履歴をクリアできます。
 - BOTの説明表示機能: `/about`コマンドで、json/model.json に定義されたBOTの説明を表示します。
+- プロンプト編集機能: ユーザーは`/edit`コマンドを使用してプロンプトを編集できます。
 
 ## ドメインに関する用語（ユビキタス言語）
 
@@ -18,6 +19,7 @@
 - チャット履歴: ユーザーごとのGeminiとのチャットの履歴
 - コマンド: Botへの指示 (例: `/chat`, `/reset`, `/about`)
 - プロンプト: Geminiへの指示文。ユーザーごと、またはデフォルトの指示文が設定可能。
+- ぺちこ: このBotの名前
 
 ## コンテキストマップ
 
@@ -29,7 +31,7 @@
 - 境界づけられたコンテキスト:
   - Discord Bot: Discord APIとのインターフェース
   - Gemini API: Google Geminiとのインターフェース
-  - 設定ファイル: (json/model.json)
+  - 設定ファイル: (json/model.json, json/custom_model.json)
 - 関係:
   - Discord BotはGemini APIを利用してチャット機能を提供します。
   - Discord Botはユーザーからのコマンドを受け付けます。
@@ -118,6 +120,16 @@
   - 処理:
     - `LoadModelConfig(filepath)`: `json/model.json`ファイルを読み込み、`ModelConfig`構造体にマッピングする。
 
+- **json/custom_model.json:**
+  - 役割: ユーザーがプロンプトをカスタマイズするための設定ファイル。
+  - 処理:
+    - ユーザーは、このファイルにプロンプトを追記することで、BOTの応答をカスタマイズできる。
+
+- **discord/edit_command.go:**
+  - 役割: `/edit`コマンドの処理を行う。
+  - 処理:
+    - ユーザーから`/edit`コマンドを受け取り、`json/custom_model.json`にプロンプトを書き込む。
+
 - **discord/handler.go:**
   - 役割: Discordのコマンドハンドラーを定義する。
   - 処理:
@@ -128,4 +140,4 @@
     - `aboutCommandHandler(s, i, modelCfg)`: `/about`コマンドの処理を行う。
 
 ## 今後の展望
-- ユーザから /edit を受け取るとプロンプトテンプレートを受け取った内容に変更する機能が欲しい
+- ユーザから /edit で delete と送られてきた際に，custom_model.json の該当するユーザの行を削除する機能を追加実装
