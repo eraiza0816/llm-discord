@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/eraiza0816/llm-discord/loader"
+
 	"github.com/google/generative-ai-go/genai"
 	"google.golang.org/api/option"
 )
@@ -23,9 +25,10 @@ type Chat struct {
 	defaultPrompt      string
 	userHistories      map[string][]string
 	userHistoriesMutex sync.Mutex
+	modelCfg         *loader.ModelConfig
 }
 
-func NewChat(token, model, defaultPrompt string) (Service, error) {
+func NewChat(token string, model string, defaultPrompt string, modelCfg *loader.ModelConfig) (Service, error) {
 	client, err := genai.NewClient(context.Background(), option.WithAPIKey(token))
 	if err != nil {
 		return nil, err
@@ -38,6 +41,7 @@ func NewChat(token, model, defaultPrompt string) (Service, error) {
 		genaiModel:    genaiModel,
 		defaultPrompt: defaultPrompt,
 		userHistories: make(map[string][]string),
+		modelCfg:         modelCfg,
 	}, nil
 }
 
@@ -67,11 +71,10 @@ func (c *Chat) GetResponse(userID, username, message, timestamp, prompt string) 
 
 	responseText := getResponseText(resp)
 
-	// 20件のメッセージ履歴を保持
 	c.userHistoriesMutex.Lock()
 	c.userHistories[userID] = append(c.userHistories[userID], message, responseText)
-	if len(c.userHistories[userID]) > 20 {
-		c.userHistories[userID] = c.userHistories[userID][len(c.userHistories[userID])-20:]
+	if len(c.userHistories[userID]) > c.modelCfg.MaxHistorySize {
+		c.userHistories[userID] = c.userHistories[userID][len(c.userHistories[userID])-c.modelCfg.MaxHistorySize:]
 	}
 	c.userHistoriesMutex.Unlock()
 

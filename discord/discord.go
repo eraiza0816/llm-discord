@@ -33,7 +33,7 @@ func StartBot(cfg *config.Config) error {
 
 	defaultPrompt := modelCfg.Prompts["default"]
 
-	chatService, err := chat.NewChat(cfg.GeminiAPIKey, modelCfg.ModelName, defaultPrompt)
+	chatService, err := chat.NewChat(cfg.GeminiAPIKey, modelCfg.ModelName, defaultPrompt, modelCfg)
 	if err != nil {
 		return err
 	}

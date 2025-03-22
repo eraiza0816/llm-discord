@@ -64,6 +64,7 @@
   - アイコン: Botのアイコン (icon)。
   - プロンプト: Geminiへの指示文 (prompts)。ユーザーごと、またはデフォルトの指示文が設定可能。
   - BOTの説明: BOTの説明 (about)。
+  - チャット履歴の最大サイズ (max_history_size): 保持するチャット履歴の最大件数。
 
 ### ドメインサービス
 
@@ -107,7 +108,7 @@
 - **chat/chat.go:**
   - 役割: Gemini APIとの通信処理を行う。
   - 処理:
-    - `NewChat(token, model, defaultPrompt)`: Gemini APIクライアントを初期化する。
+    - `NewChat(token, model, defaultPrompt, modelCfg)`: Gemini APIクライアントを初期化する。
     - `GetResponse(userID, username, message, timestamp, prompt)`: Gemini APIを呼び出し、応答を取得する。
     - `ClearHistory(userID)`: チャット履歴をクリアする。
 
@@ -119,7 +120,7 @@
 - **loader/model.go:**
   - 役割: json/model.jsonの読み込み処理を行う。
   - 処理:
-    - `LoadModelConfig(filepath)`: `json/model.json`ファイルを読み込み、`ModelConfig`構造体にマッピングする。
+    - `LoadModelConfig(filepath)`: `json/model.json`ファイルを読み込み、`ModelConfig`構造体にマッピングする。`max_history_size`も読み込むように修正。
 
 - **json/custom_model.json:**
   - 役割: ユーザーがプロンプトをカスタマイズするための設定ファイル。
