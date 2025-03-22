@@ -135,6 +135,7 @@
 - **discord/handler.go:**
   - 役割: Discordのコマンドハンドラーを定義する。
   - 処理:
+    - ログ出力先のディレクトリが存在しない場合に、ディレクトリを作成する処理を追加。
     - `interactionCreate(chatSvc, modelCfg)`: コマンドハンドラーを登録する。
     - `interactionHandler(s, i, chatSvc, modelCfg)`: `/chat`、`/reset`、`/about`などのコマンド処理を個別のハンドラー関数に委譲する。
     - `chatCommandHandler(s, i, chatSvc, modelCfg)`: `/chat`コマンドの処理を行う。
