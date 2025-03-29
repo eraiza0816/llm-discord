@@ -13,5 +13,10 @@
         "title": "llm-discord (Github)🔗",
         "description": "大規模言語モデルになっちゃった！ \n いったいこれからどうなっちゃうの～？？",
         "url": "https://github.com/eraiza0816/llm-discord"
+    },
+    "ollama": {
+        "enabled": false,
+        "api_endpoint": "http://127.0.0.1:11434/api/generate",
+        "model_name": "gemma3:12b-it-q8_0"
     }
 }

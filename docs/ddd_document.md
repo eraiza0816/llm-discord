@@ -2,12 +2,12 @@
 
 ## プロジェクトの目的と概要
 
-このプロジェクトは、Discord上でGoogle製LLMのGeminiとチャットできるDiscord Bot「ぺちこ」を開発しています。
-ユーザーはDiscordのインターフェースを通じてGemini (gemini-2.0-flash) と対話できます。
+このプロジェクトは、Discord上でLLMのGeminiとOllamaとチャットできるDiscord Bot「ぺちこ」を開発しています。
+ユーザーはDiscordのインターフェースを通じてGeminiまたはOllamaと対話できます。
 
 ## 主要な機能
 
-- Geminiとのチャット機能: ユーザーはテキストメッセージを送信し、Geminiからの応答を受信できます。
+- LLMとのチャット機能: ユーザーはテキストメッセージを送信し、GeminiまたはOllamaからの応答を受信できます。
 - チャット履歴のリセット機能: ユーザーは`/reset`コマンドを使用してチャット履歴をクリアできます。
 - BOTの説明表示機能: `/about`コマンドで、json/model.json に定義されたBOTの説明を表示します。
 - プロンプト編集機能: ユーザーは`/edit`コマンドを使用してプロンプトを編集できます。
@@ -16,25 +16,28 @@
 ## ドメインに関する用語（ユビキタス言語）
 
 - Bot: Discord Bot
-- Gemini: Googleの大規模言語モデル Gemini
-- チャット履歴: ユーザーごとのGeminiとのチャットの履歴
+- Gemini: GoogleのLLM
+- Ollama: ローカルで動作するLLM
+- LLM: GeminiやOllamaなどの大規模言語モデル
+- チャット履歴: ユーザーごとのLLMとのチャットの履歴
 - コマンド: Botへの指示 (例: `/chat`, `/reset`, `/about`)
-- プロンプト: Geminiへの指示文。ユーザーごと、またはデフォルトの指示文が設定可能。
+- プロンプト: GeminiまたはOllamaへの指示文。ユーザーごと、またはデフォルトの指示文が設定可能。
 - ぺちこ: このBotの名前
 
 ## コンテキストマップ
 
 - サブドメイン:
-  - チャット: ユーザーとGeminiの対話の管理
+  - チャット: ユーザーとLLMとの対話の管理
   - コマンド処理: ユーザーからのコマンドの解析と実行
   - 設定管理: Botの設定の読み込みと管理
   - ユーザー管理: ユーザーの識別と履歴の管理
 - 境界づけられたコンテキスト:
   - Discord Bot: Discord APIとのインターフェース
   - Gemini API: Google Geminiとのインターフェース
+  - Ollama API: Ollamaとのインターフェース
   - 設定ファイル: (json/model.json, json/custom_model.json)
 - 関係:
-  - Discord BotはGemini APIを利用してチャット機能を提供します。
+  - Discord BotはLLMを利用してチャット機能を提供します。
   - Discord Botはユーザーからのコマンドを受け付けます。
   - Discord Botはユーザーのチャット履歴を管理します。
   - Discord Botは設定ファイルから設定を読み込みます。
@@ -60,18 +63,18 @@
   - メッセージの送信時刻。
 
 - **設定 (ModelConfig)**
-  - モデル名: 使用するGeminiのモデル名 (model_name)。
+  - モデル名: 使用するLLMのモデル名 (model_name)。
   - アイコン: Botのアイコン (icon)。
-  - プロンプト: Geminiへの指示文 (prompts)。ユーザーごと、またはデフォルトの指示文が設定可能。
+  - プロンプト: LLMへの指示文 (prompts)。ユーザーごと、またはデフォルトの指示文が設定可能。
   - BOTの説明: BOTの説明 (about)。
   - チャット履歴の最大サイズ (max_history_size): 保持するチャット履歴の最大件数。
 
 ### ドメインサービス
 
 - **ChatService**
-  - 役割: Gemini APIとのやり取りを行う。
+  - 役割: LLMとのやり取りを行う。
   - メソッド:
-    - `GetResponse(userID, username, message, timestamp, prompt)`: Gemini APIを呼び出し、応答を取得する。
+    - `GetResponse(userID, username, message, timestamp, prompt)`: LLMを呼び出し、応答、処理時間、モデル名を取得する。
     - `ClearHistory(userID)`: ユーザーのチャット履歴をクリアする。
 
 - **ConfigService**
@@ -85,7 +88,7 @@
   - 概要: ユーザーがメッセージを送信したときに発生するイベント。
   - イベントハンドラー:
     - チャット履歴の更新
-    - Gemini APIへのメッセージ送信
+    - LLMへのメッセージ送信
 
 - **チャット履歴クリアイベント (ChatHistoryClearedEvent)**
   - 概要: ユーザーがチャット履歴をクリアしたときに発生するイベント。
@@ -106,11 +109,12 @@
     - `LoadConfig()`: `.env`ファイルを読み込み、環境変数を設定する。
 
 - **chat/chat.go:**
-  - 役割: Gemini APIとの通信処理を行う。
+  - 役割: LLMとの通信処理を行う。
   - 処理:
     - `NewChat(token, model, defaultPrompt, modelCfg)`: Gemini APIクライアントを初期化する。
-    - `GetResponse(userID, username, message, timestamp, prompt)`: Gemini APIを呼び出し、応答を取得する。
+    - `GetResponse(userID, username, message, timestamp, prompt)`: LLMを呼び出し、応答を取得する。
     - `ClearHistory(userID)`: チャット履歴をクリアする。
+    - `getOllamaResponse(fullInput string)`: Ollama APIを呼び出し、応答を取得する。ログ出力を最後の1行に変更。
 
 - **discord/discord.go:**
   - 役割: Discord APIとのインターフェースを提供し、Botの起動、コマンド登録を行う。
@@ -120,7 +124,7 @@
 - **loader/model.go:**
   - 役割: json/model.jsonの読み込み処理を行う。
   - 処理:
-    - `LoadModelConfig(filepath)`: `json/model.json`ファイルを読み込み、`ModelConfig`構造体にマッピングする。`max_history_size`も読み込むように修正。
+    - `LoadModelConfig(filepath)`: `json/model.json`ファイルを読み込み、`ModelConfig`構造体にマッピングする。`Ollamaの設定も読み込むように修正。
 
 - **json/custom_model.json:**
   - 役割: ユーザーがプロンプトをカスタマイズするための設定ファイル。
@@ -142,7 +146,7 @@
     - `chatCommandHandler(s, i, chatSvc, modelCfg)`: `/chat`コマンドの処理を行う。
     - `resetCommandHandler(s, i, chatSvc)`: `/reset`コマンドの処理を行う。
     - `aboutCommandHandler(s, i, modelCfg)`: `/about`コマンドの処理を行う。
+    - `chatCommandHandler(s, i, chatSvc, modelCfg)`: `/chat`コマンドの処理を行う。Embedに処理時間とモデル名を表示するフッターを追加。
 
 ## 今後の展望
-- 検索機能を持たせる。GeminiのグラウンディングAPI を使って，ユーザーからの質問を受け付けて，検索結果とGeminiの応答を組み合わせて、ユーザーに回答する
-- gemini だけではなく，ollamaを使う。
+- 検索機能を持たせる。GeminiのグラウンディングAPI を使って，ユーザーからの質問を受け付けて、検索結果とGeminiまたはOllamaの応答を組み合わせて、ユーザーに回答する。

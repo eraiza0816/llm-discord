@@ -100,7 +100,7 @@ func chatCommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate, ch
 		},
 	})
 
-	response, _, err := chatSvc.GetResponse(userID, username, message, timestamp, userPrompt)
+	response, elapsed, modelName, err := chatSvc.GetResponse(userID, username, message, timestamp, userPrompt)
 	if err != nil {
 		log.Printf("GetResponse error: %v", err)
 		content := fmt.Sprintf("エラーが発生しました: %v", err)
@@ -131,6 +131,9 @@ func chatCommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate, ch
 		},
 		Fields: splitToEmbedFields(response),
 		Color:  0xa8ffee,
+		Footer: &discordgo.MessageEmbedFooter{
+			Text: fmt.Sprintf("%vms %s", elapsed, modelName),
+		},
 	}
 
 	_, err = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{

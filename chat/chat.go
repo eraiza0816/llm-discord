@@ -11,10 +11,16 @@ import (
 
 	"github.com/google/generative-ai-go/genai"
 	"google.golang.org/api/option"
+	"net/http"
+	"bytes"
+	"encoding/json"
+	"log"
+	"bufio"
+	"io"
 )
 
 type Service interface {
-	GetResponse(userID, username, message, timestamp, prompt string) (string, float64, error)
+	GetResponse(userID, username, message, timestamp, prompt string) (string, float64, string, error)
 	ClearHistory(userID string)
 	Close()
 }
@@ -45,11 +51,11 @@ func NewChat(token string, model string, defaultPrompt string, modelCfg *loader.
 	}, nil
 }
 
-func (c *Chat) GetResponse(userID, username, message, timestamp, prompt string) (string, float64, error) {
+func (c *Chat) GetResponse(userID, username, message, timestamp, prompt string) (string, float64, string, error) {
 	var history string
 	if strings.ToLower(strings.TrimSpace(message)) == "/reset" {
 		c.ClearHistory(userID)
-		return "履歴をリセットしました！", 0, nil
+		return "履歴をリセットしました！", 0, "", nil
 	}
 
 	c.userHistoriesMutex.Lock()
@@ -59,6 +65,42 @@ func (c *Chat) GetResponse(userID, username, message, timestamp, prompt string) 
 	currentTime := time.Now().Format("2006-01-02 15:04:05")
 	fullInput := prompt + "\n" + history + "\ndate time：" + currentTime + "\n" + message
 
+	var responseText string
+	var elapsed float64
+	var err error
+
+	if c.modelCfg.Ollama.Enabled {
+		responseText, elapsed, err = c.getOllamaResponse(fullInput)
+		if err != nil {
+			log.Printf("Ollamaとの通信に失敗したため、Geminiにフォールバックします: %v", err)
+			responseText, elapsed, err = c.getGeminiResponse(fullInput)
+			if err != nil {
+				return "", elapsed, "", fmt.Errorf("Gemini APIからのエラー: %v", err)
+			}
+		}
+	} else {
+		responseText, elapsed, err = c.getGeminiResponse(fullInput)
+		if err != nil {
+			return "", elapsed, "", fmt.Errorf("Gemini APIからのエラー: %v", err)
+		}
+	}
+
+	c.userHistoriesMutex.Lock()
+	c.userHistories[userID] = append(c.userHistories[userID], message, responseText)
+	if len(c.userHistories[userID]) > c.modelCfg.MaxHistorySize {
+		c.userHistories[userID] = c.userHistories[userID][len(c.userHistories[userID])-c.modelCfg.MaxHistorySize:]
+	}
+	c.userHistoriesMutex.Unlock()
+
+	modelName := c.modelCfg.ModelName
+	if c.modelCfg.Ollama.Enabled {
+		modelName = c.modelCfg.Ollama.ModelName
+	}
+
+	return responseText, elapsed, modelName, nil
+}
+
+func (c *Chat) getGeminiResponse(fullInput string) (string, float64, error) {
 	ctx := context.Background()
 	start := time.Now()
 
@@ -70,14 +112,71 @@ func (c *Chat) GetResponse(userID, username, message, timestamp, prompt string) 
 	}
 
 	responseText := getResponseText(resp)
+	return responseText, elapsed, nil
+}
 
-	c.userHistoriesMutex.Lock()
-	c.userHistories[userID] = append(c.userHistories[userID], message, responseText)
-	if len(c.userHistories[userID]) > c.modelCfg.MaxHistorySize {
-		c.userHistories[userID] = c.userHistories[userID][len(c.userHistories[userID])-c.modelCfg.MaxHistorySize:]
+func (c *Chat) getOllamaResponse(fullInput string) (string, float64, error) {
+	start := time.Now()
+	url := c.modelCfg.Ollama.APIEndpoint
+
+	payload := map[string]string{
+		"prompt": fullInput,
+		"model":  c.modelCfg.Ollama.ModelName,
 	}
-	c.userHistoriesMutex.Unlock()
+	jsonPayload, err := json.Marshal(payload)
+	if err != nil {
+		return "", 0, fmt.Errorf("JSONの作成に失敗: %v", err)
+	}
 
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonPayload))
+	if err != nil {
+		return "", 0, fmt.Errorf("リクエストの作成に失敗: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", 0, fmt.Errorf("Ollama APIへのリクエストに失敗: %v", err)
+	}
+	defer resp.Body.Close()
+
+	reader := bufio.NewReader(resp.Body)
+	var responseText string
+	var fullResponse string
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return "", 0, fmt.Errorf("レスポンスの読み込みに失敗: %v", err)
+		}
+		fullResponse += line
+		var result map[string]interface{}
+		err = json.Unmarshal([]byte(line), &result)
+		if err != nil {
+			return "", 0, fmt.Errorf("レスポンスのJSON解析に失敗: %v", err)
+		}
+
+		response, ok := result["response"].(string)
+		if ok {
+			responseText += response
+		}
+
+		done, ok := result["done"].(bool)
+		if ok && done {
+			break
+		}
+	}
+
+	elapsed := float64(time.Since(start).Milliseconds())
+	lastLine := ""
+	lines := strings.Split(strings.TrimSuffix(fullResponse, "\n"), "\n")
+	if len(lines) > 0 {
+		lastLine = lines[len(lines)-1]
+	}
+	log.Printf("Ollama API response: %s", lastLine)
 	return responseText, elapsed, nil
 }
 

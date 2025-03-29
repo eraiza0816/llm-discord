@@ -13,6 +13,13 @@ type ModelConfig struct {
 	MaxHistorySize int               `json:"max_history_size"`
 	Prompts       map[string]string `json:"prompts"`
 	About         About             `json:"about"`
+	Ollama        OllamaConfig      `json:"ollama"`
+}
+
+type OllamaConfig struct {
+	Enabled     bool   `json:"enabled"`
+	APIEndpoint string `json:"api_endpoint"`
+	ModelName   string `json:"model_name"`
 }
 
 type About struct {
