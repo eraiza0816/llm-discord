@@ -20,7 +20,7 @@ import (
 )
 
 type Service interface {
-	GetResponse(userID, username, message, timestamp, prompt string) (string, float64, error)
+	GetResponse(userID, username, message, timestamp, prompt string) (string, float64, string, error)
 	ClearHistory(userID string)
 	Close()
 }
@@ -51,11 +51,11 @@ func NewChat(token string, model string, defaultPrompt string, modelCfg *loader.
 	}, nil
 }
 
-func (c *Chat) GetResponse(userID, username, message, timestamp, prompt string) (string, float64, error) {
+func (c *Chat) GetResponse(userID, username, message, timestamp, prompt string) (string, float64, string, error) {
 	var history string
 	if strings.ToLower(strings.TrimSpace(message)) == "/reset" {
 		c.ClearHistory(userID)
-		return "履歴をリセットしました！", 0, nil
+		return "履歴をリセットしました！", 0, "", nil
 	}
 
 	c.userHistoriesMutex.Lock()
@@ -75,13 +75,13 @@ func (c *Chat) GetResponse(userID, username, message, timestamp, prompt string) 
 			log.Printf("Ollamaとの通信に失敗したため、Geminiにフォールバックします: %v", err)
 			responseText, elapsed, err = c.getGeminiResponse(fullInput)
 			if err != nil {
-				return "", elapsed, fmt.Errorf("Gemini APIからのエラー: %v", err)
+				return "", elapsed, "", fmt.Errorf("Gemini APIからのエラー: %v", err)
 			}
 		}
 	} else {
 		responseText, elapsed, err = c.getGeminiResponse(fullInput)
 		if err != nil {
-			return "", elapsed, fmt.Errorf("Gemini APIからのエラー: %v", err)
+			return "", elapsed, "", fmt.Errorf("Gemini APIからのエラー: %v", err)
 		}
 	}
 
@@ -92,7 +92,12 @@ func (c *Chat) GetResponse(userID, username, message, timestamp, prompt string) 
 	}
 	c.userHistoriesMutex.Unlock()
 
-	return responseText, elapsed, nil
+	modelName := c.modelCfg.ModelName
+	if c.modelCfg.Ollama.Enabled {
+		modelName = c.modelCfg.Ollama.ModelName
+	}
+
+	return responseText, elapsed, modelName, nil
 }
 
 func (c *Chat) getGeminiResponse(fullInput string) (string, float64, error) {

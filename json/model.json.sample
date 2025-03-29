@@ -17,6 +17,6 @@
     "ollama": {
         "enabled": false,
         "api_endpoint": "http://127.0.0.1:11434/api/generate",
-        "model_name": "gemma3:4b-it-fp16"
+        "model_name": "gemma3:12b-it-q8_0"
     }
 }
