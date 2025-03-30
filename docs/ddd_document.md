@@ -94,7 +94,7 @@
          - 詳細なログ（どの関数が呼ばれたか、引数など）を出力する。
          - `type switch` を使用して `genai.FunctionCall` 型であることを確認し、関数名と引数を取得する。
          - 関数名に応じて `zutool` の対応する API (`GetWeatherPoint`, `GetWeatherStatus`, `GetPainStatus`, `GetOtenkiASP`) を呼び出す。
-         - API の実行結果を整形し、ユーザーへの応答として **即座に `return` する**。(この場合、履歴には追加されない)
+         - API の実行結果 (`GetPainStatus` の場合は地域名、期間、各痛みレベルの割合など) を整形し、ユーザーへの応答として **即座に `return` する**。(この場合、履歴には追加されない)
       5. ループ内で `genai.FunctionCall` が見つからなかった場合:
          - Gemini が生成した通常のテキスト応答 (`genai.Text`) を取得する。
          - `historyMgr.Add(userID, message, responseText)` を呼び出して、ユーザーのメッセージとGeminiの応答を履歴に追加する。
