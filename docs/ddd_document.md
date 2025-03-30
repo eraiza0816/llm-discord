@@ -87,17 +87,18 @@
   - 処理:
     - `NewChat(token, model, defaultPrompt, modelCfg, historyMgr)`: Geminiクライアント、`zu2l` APIクライアント (`APIキー不要`)、`HistoryManager` を初期化する。`zutool` API に対応する `FunctionDeclaration` を含む `Tool` を定義し、Gemini モデルに設定する。
     - `GetResponse(userID, username, message, timestamp, prompt)`:
-      1. ユーザー入力とプロンプト（ツール使用指示を含む）を結合して Gemini に送信する (`GenerateContent` を使用)。
-      2. Gemini からの応答 (`resp.Candidates[0].Content.Parts`) をループで確認する。
-      3. 応答パーツの中に `genai.FunctionCall` 型のパーツが見つかった場合:
+      1. `historyMgr.Get(userID)` を呼び出してユーザーの会話履歴を取得する。
+      2. 取得した履歴、ユーザー入力、プロンプト（ツール使用指示を含む）を結合して Gemini に送信する (`GenerateContent` を使用)。
+      3. Gemini からの応答 (`resp.Candidates[0].Content.Parts`) をループで確認する。
+      4. 応答パーツの中に `genai.FunctionCall` 型のパーツが見つかった場合:
          - 詳細なログ（どの関数が呼ばれたか、引数など）を出力する。
          - `type switch` を使用して `genai.FunctionCall` 型であることを確認し、関数名と引数を取得する。
          - 関数名に応じて `zutool` の対応する API (`GetWeatherPoint`, `GetWeatherStatus`, `GetPainStatus`, `GetOtenkiASP`) を呼び出す。
-         - API の実行結果を整形し、ユーザーへの応答として **即座に `return` する**。
-      4. ループ内で `genai.FunctionCall` が見つからなかった場合:
+         - API の実行結果を整形し、ユーザーへの応答として **即座に `return` する**。(この場合、履歴には追加されない)
+      5. ループ内で `genai.FunctionCall` が見つからなかった場合:
          - Gemini が生成した通常のテキスト応答 (`genai.Text`) を取得する。
+         - `historyMgr.Add(userID, message, responseText)` を呼び出して、ユーザーのメッセージとGeminiの応答を履歴に追加する。
          - テキスト応答をユーザーへの応答として `return` する。
-         - (現在、履歴 (`historyMgr.Add`) への追加はコメントアウトされている。)
     - `Close()`: Geminiクライアントを閉じる。
 
 - **HistoryManager** (`history/history.go`)
@@ -132,14 +133,15 @@
     - `LoadConfig()`: `.env`ファイルを読み込み、環境変数を設定する。エラー発生時は `log.Fatalf` せずにエラーを返す。
 
 - **chat/chat.go:**
-  - 役割: LLM (Gemini) との通信、および Function Calling を介した `zu2l` API 連携の中心的なロジックを担う。
+  - 役割: LLM (Gemini) との通信、会話履歴の管理、および Function Calling を介した `zu2l` API 連携の中心的なロジックを担う。
   - 処理:
     - `NewChat`: 依存関係（クライアント、マネージャー）を初期化し、`zutool` 用の `FunctionDeclaration` を定義してモデルに設定する。
     - `GetResponse`:
-      - プロンプトにツール使用ルールを追加して Gemini にリクエストを送信する。
+      - `HistoryManager` から会話履歴を取得する。
+      - 履歴とプロンプト（ツール使用ルールを含む）を結合して Gemini にリクエストを送信する。
       - 応答の全パーツをループし、`type switch` で `genai.FunctionCall` を検出する。
       - Function Call 検出時は、対応する `zutool` API を実行し、結果を `return` する。
-      - Function Call 非検出時は、通常のテキスト応答を `return` する。
+      - Function Call 非検出時は、通常のテキスト応答を取得し、`HistoryManager` に履歴を追加してから応答を `return` する。
       - デバッグ用に、応答パーツの内容、型アサーション/`type switch` の結果、`switch` 文の実行状況などの詳細なログを出力する。
     - `Close`: Geminiクライアントを閉じる。
     - (Ollama関連の `getOllamaResponse`, `parseOllamaStreamResponse` も存在するが、現在は Gemini がメイン。)

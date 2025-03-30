@@ -30,7 +30,6 @@ func chatCommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate, ch
 		userPrompt = customPrompt
 	} else {
 		// カスタムプロンプトが存在しなければデフォルトを使用
-		// log.Printf("ユーザー %s のカスタムプロンプトは見つかりませんでした。デフォルトプロンプトを使用します。", username)
 		userPrompt = modelCfg.GetPromptByUser(username)
 	}
 

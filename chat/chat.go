@@ -135,11 +135,18 @@ func (c *Chat) GetResponse(userID, username, message, timestamp, prompt string) 
 - getPainStatus: 頭痛予報に関する質問の場合。地名が必要です。
 - searchWeatherPoint: 地点検索に関する質問の場合。検索キーワード（地名）が必要です。
 - getOtenkiAspInfo: ASP情報に関する質問の場合。地点コードが必要です。
-
 `
-	fullInput := prompt + toolInstructions + "\n\nユーザーのメッセージ:\n" + message
+	// 1. 履歴を取得
+	userHistory := c.historyMgr.Get(userID)
+	historyText := ""
+	if userHistory != "" {
+		historyText = "会話履歴:\n" + userHistory + "\n\n"
+	}
 
-	// 2. Geminiの呼び出し (GenerateContent を使用)
+	// 2. プロンプトとメッセージを結合 (履歴も追加)
+	fullInput := prompt + toolInstructions + "\n\n" + historyText + "ユーザーのメッセージ:\n" + message
+
+	// 3. Geminiの呼び出し (GenerateContent を使用)
 	ctx := context.Background()
 	start := time.Now() // 時間計測開始
 	resp, err := c.genaiModel.GenerateContent(ctx, genai.Text(fullInput))
@@ -170,10 +177,10 @@ func (c *Chat) GetResponse(userID, username, message, timestamp, prompt string) 
 					functionCallProcessed = true // フラグを立てる
 
 					// 6. Function callの実行 (既存のswitch文をここに移動)
-					log.Printf("Entering switch statement for FunctionCall: %s", fn.Name) // ✨ Switchに入る直前のログ
+					log.Printf("Entering switch statement for FunctionCall: %s", fn.Name)
 					switch fn.Name {
 					case "getWeather":
-						log.Println("Matched case: getWeather") // ✨ Case一致ログ
+						log.Println("Matched case: getWeather")
 						// 引数を取得
 						location, ok := fn.Args["location"].(string)
 					if !ok {
@@ -368,21 +375,22 @@ func (c *Chat) GetResponse(userID, username, message, timestamp, prompt string) 
 	responseText := getResponseText(resp) // getResponseTextはそのまま使える
 	log.Printf("Final response text to be returned: %s", responseText) // ✨ 最終応答のログ
 
-	// 履歴追加処理も一旦コメントアウト (履歴の扱いを修正後に戻す)
-	// c.historyMgr.Add(userID, message, responseText)
+	// 8. 履歴に追加 (Function Call 以外の場合)
+	// Function Call の場合は、APIの結果ではなくLLM自身の応答を履歴に残すか検討が必要
+	// 現状は Function Call でも LLM の応答 (responseText) を履歴に追加する
+	// TODO: Function Call の場合の履歴の扱いを再検討する
+	if responseText != "" { // 空の応答は追加しない
+		c.historyMgr.Add(userID, message, responseText)
+		log.Printf("Added to history for user %s: message='%s', response='%s'", userID, message, responseText)
+	} else {
+		log.Printf("Skipping history add for user %s because responseText is empty.", userID)
+	}
+
 
 	return responseText, elapsed, c.modelCfg.ModelName, nil
 }
 
-// getGeminiResponse 関数は SendMessage を使うようになったため不要
-/*
-func (c *Chat) getGeminiResponse(fullInput string) (string, float64, error) { ... }
-*/
-
 func (c *Chat) getOllamaResponse(userID, fullInput string) (string, float64, error) { // userID を引数に追加 (ただし未使用)
-	// Ollamaの場合は履歴を手動で結合する必要がある
-	// userHistory := c.historyMgr.Get(userID) // userID がこのスコープにないためエラーになる -> 一旦コメントアウト
-	// TODO: Ollamaの場合の履歴処理を実装する。userIDを引数で受け取るようにしたが、履歴結合ロジックが必要。
 	log.Println("Warning: Ollama history processing is not implemented yet.")
 
 	start := time.Now()
