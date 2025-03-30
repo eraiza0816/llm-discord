@@ -12,6 +12,10 @@
 - BOTの説明表示機能: `/about`コマンドで、json/model.json に定義されたBOTの説明を表示します。
 - プロンプト編集機能: ユーザーは`/edit`コマンドを使用してプロンプトを編集できます。
   - `/edit`コマンドで"delete"と送信された場合、custom_model.json から該当ユーザーの行を削除します。
+- **天気情報提供機能**: ユーザーがメッセージに「天気」と地名を含むと、`zu2l` API (`GetWeatherPoint`, `GetWeatherStatus`) を呼び出して天気情報を返します。
+- **頭痛情報提供機能**: ユーザーがメッセージに「頭痛」または「ずつう」と地名を含むと、`zu2l` API (`GetWeatherPoint`, `GetPainStatus`) を呼び出して頭痛情報を返します。
+- **Otenki ASP情報提供機能**: ユーザーがメッセージに「asp情報」と地点コードを含むと、`zu2l` API (`GetOtenkiASP`) を呼び出してOtenki ASP情報を返します。
+- **地点検索機能**: ユーザーがメッセージに「地点検索」とキーワードを含むと、`zu2l` API (`GetWeatherPoint`) を呼び出して地点情報を返します。
 
 ## ドメインに関する用語（ユビキタス言語）
 
@@ -79,10 +83,22 @@
 ### ドメインサービス / アプリケーションサービス / インフラストラクチャサービス
 
 - **ChatService** (`chat/chat.go`)
-  - 役割: LLMとのやり取りを行う。履歴管理は `HistoryManager` に移譲。
-  - メソッド:
-    - `GetResponse(userID, username, message, timestamp, prompt)`: LLMを呼び出し、応答、処理時間、モデル名を取得する。内部で `HistoryManager` を利用して履歴を取得・追加する。
-    - `Close()`: LLMクライアントを閉じる。
+  - 役割: LLM (Gemini) とのやり取り、および Gemini の Function Calling 機能を利用した `zu2l` API (天気/頭痛/ASP/地点情報) の呼び出し処理を担当する。
+  - 処理:
+    - `NewChat(token, model, defaultPrompt, modelCfg, historyMgr)`: Geminiクライアント、`zu2l` APIクライアント (`APIキー不要`)、`HistoryManager` を初期化する。`zutool` API に対応する `FunctionDeclaration` を含む `Tool` を定義し、Gemini モデルに設定する。
+    - `GetResponse(userID, username, message, timestamp, prompt)`:
+      1. ユーザー入力とプロンプト（ツール使用指示を含む）を結合して Gemini に送信する (`GenerateContent` を使用)。
+      2. Gemini からの応答 (`resp.Candidates[0].Content.Parts`) をループで確認する。
+      3. 応答パーツの中に `genai.FunctionCall` 型のパーツが見つかった場合:
+         - 詳細なログ（どの関数が呼ばれたか、引数など）を出力する。
+         - `type switch` を使用して `genai.FunctionCall` 型であることを確認し、関数名と引数を取得する。
+         - 関数名に応じて `zutool` の対応する API (`GetWeatherPoint`, `GetWeatherStatus`, `GetPainStatus`, `GetOtenkiASP`) を呼び出す。
+         - API の実行結果を整形し、ユーザーへの応答として **即座に `return` する**。
+      4. ループ内で `genai.FunctionCall` が見つからなかった場合:
+         - Gemini が生成した通常のテキスト応答 (`genai.Text`) を取得する。
+         - テキスト応答をユーザーへの応答として `return` する。
+         - (現在、履歴 (`historyMgr.Add`) への追加はコメントアウトされている。)
+    - `Close()`: Geminiクライアントを閉じる。
 
 - **HistoryManager** (`history/history.go`)
   - 役割: ユーザーごとのチャット履歴を管理する。
@@ -92,9 +108,11 @@
     - `Clear(userID)`: 履歴をクリアする。
 
 - **設定ローダー (config, loader)**
-  - `config.LoadConfig()`: 環境変数(`.env`)を読み込む。
-  - `loader.LoadModelConfig(filepath)`: `model.json` を読み込む。
-  - `discord/custom_prompt.go` 内の関数群: `custom_model.json` の読み書きを行う。
+  - 役割: 環境変数の読み込みと管理を行う。
+  - 処理:
+    - `config.LoadConfig()`: 環境変数(`.env`)を読み込む。
+    - `loader.LoadModelConfig(filepath)`: `model.json` を読み込む。
+    - `discord/custom_prompt.go` 内の関数群: `custom_model.json` の読み書きを行う。
 
 ### ドメインイベント
 
@@ -114,13 +132,17 @@
     - `LoadConfig()`: `.env`ファイルを読み込み、環境変数を設定する。エラー発生時は `log.Fatalf` せずにエラーを返す。
 
 - **chat/chat.go:**
-  - 役割: LLM (Gemini, Ollama) との通信処理を行う。
+  - 役割: LLM (Gemini) との通信、および Function Calling を介した `zu2l` API 連携の中心的なロジックを担う。
   - 処理:
-    - `NewChat(token, model, defaultPrompt, modelCfg, historyMgr)`: LLMクライアントと `HistoryManager` を受け取り、`ChatService` を初期化する。
-    - `GetResponse(userID, username, message, timestamp, prompt)`: `HistoryManager` から履歴を取得し、LLMを呼び出し、応答を取得し、履歴を `HistoryManager` に追加する。`/reset` はここで処理せず、`discord/reset_command.go` で処理される。
-    - `getOllamaResponse(fullInput string)`: Ollama APIを呼び出し、応答を取得する。ストリーミングレスポンスの解析は `parseOllamaStreamResponse` に分離。
-    - `parseOllamaStreamResponse(reader *bufio.Reader)`: Ollamaのストリーミングレスポンスを解析する。
-    - `Close()`: LLMクライアントを閉じる。
+    - `NewChat`: 依存関係（クライアント、マネージャー）を初期化し、`zutool` 用の `FunctionDeclaration` を定義してモデルに設定する。
+    - `GetResponse`:
+      - プロンプトにツール使用ルールを追加して Gemini にリクエストを送信する。
+      - 応答の全パーツをループし、`type switch` で `genai.FunctionCall` を検出する。
+      - Function Call 検出時は、対応する `zutool` API を実行し、結果を `return` する。
+      - Function Call 非検出時は、通常のテキスト応答を `return` する。
+      - デバッグ用に、応答パーツの内容、型アサーション/`type switch` の結果、`switch` 文の実行状況などの詳細なログを出力する。
+    - `Close`: Geminiクライアントを閉じる。
+    - (Ollama関連の `getOllamaResponse`, `parseOllamaStreamResponse` も存在するが、現在は Gemini がメイン。)
 
 - **history/history.go:**
   - 役割: チャット履歴の管理ロジックを提供する。

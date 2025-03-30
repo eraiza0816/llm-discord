@@ -4,6 +4,7 @@ go 1.23.7
 
 require (
 	github.com/bwmarrin/discordgo v0.28.1
+	github.com/eraiza0816/zu2l v0.0.0-20250330130800-8935457bcbd0
 	github.com/google/generative-ai-go v0.19.0
 	github.com/joho/godotenv v1.5.1
 	google.golang.org/api v0.226.0
