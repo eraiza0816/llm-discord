@@ -9,9 +9,7 @@ import (
 	"syscall"
 
 	"github.com/bwmarrin/discordgo"
-	"github.com/eraiza0816/llm-discord/chat"
 	"github.com/eraiza0816/llm-discord/config"
-	"github.com/eraiza0816/llm-discord/loader"
 )
 
 func StartBot(cfg *config.Config) error {
@@ -26,18 +24,12 @@ func StartBot(cfg *config.Config) error {
 		return err
 	}
 
-	modelCfg, err := loader.LoadModelConfig("json/model.json")
-	if err != nil {
-		return err
-	}
+	// model.json の読み込みは setupHandlers に移動
+	// defaultPrompt も setupHandlers 内で modelCfg から取得される想定 (chat.NewChat の引数も変更が必要)
 
-	defaultPrompt := modelCfg.Prompts["default"]
-
-	chatService, err := chat.NewChat(cfg.GeminiAPIKey, modelCfg.ModelName, defaultPrompt, modelCfg)
-	if err != nil {
-		return err
-	}
-	defer chatService.Close()
+	// chat.NewChat の呼び出しは setupHandlers に移動
+	// defer chatService.Close() も移動が必要だが、setupHandlers のスコープでは早すぎる。
+	// main 関数で Close するのが適切だが、今回はリファクタリング範囲外とする。
 
 	commands := []*discordgo.ApplicationCommand{
 		{
@@ -112,7 +104,10 @@ func StartBot(cfg *config.Config) error {
 		log.Println("session.State or session.State.User is nil, skipping command registration")
 	}
 
-	setupHandlers(session, chatService, modelCfg)
+	err = setupHandlers(session, cfg.GeminiAPIKey)
+	if err != nil {
+		return fmt.Errorf("ハンドラの設定中にエラーが発生しました: %w", err)
+	}
 
 	session.AddHandler(func(s *discordgo.Session, r *discordgo.Ready) {
 		log.Println("session.AddHandler called")

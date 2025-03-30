@@ -4,10 +4,10 @@ import (
 	"log"
 
 	"github.com/bwmarrin/discordgo"
-	"github.com/eraiza0816/llm-discord/chat"
+	"github.com/eraiza0816/llm-discord/history"
 )
 
-func resetCommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate, chatSvc chat.Service) {
+func resetCommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate, historyMgr history.HistoryManager) {
 	userID := i.Member.User.ID
 	resetUsername := i.Member.User.Username + "#" + i.Member.User.Discriminator
 	log.Printf("User %s performed a reset operation.", resetUsername)
@@ -19,7 +19,7 @@ func resetCommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate, c
 		},
 	})
 
-	chatSvc.ClearHistory(userID)
+	historyMgr.Clear(userID)
 
 	embed := &discordgo.MessageEmbed{
 		Description: "チャット履歴をリセットしました！",

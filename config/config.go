@@ -2,7 +2,7 @@ package config
 
 import (
 	"errors"
-	"log"
+	"fmt"
 	"os"
 	"strings"
 
@@ -17,8 +17,7 @@ type Config struct {
 func LoadConfig() (*Config, error) {
 	err := godotenv.Load(".env")
 	if err != nil {
-		log.Fatalf("Error loading .env file: %v", err)
-		return nil, err
+		return nil, fmt.Errorf(".env ファイルの読み込みに失敗しました: %w", err)
 	}
 
 	token := os.Getenv("DISCORD_BOT_TOKEN")

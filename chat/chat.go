@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
+	"github.com/eraiza0816/llm-discord/history"
 	"github.com/eraiza0816/llm-discord/loader"
 
 	"github.com/google/generative-ai-go/genai"
@@ -21,20 +21,18 @@ import (
 
 type Service interface {
 	GetResponse(userID, username, message, timestamp, prompt string) (string, float64, string, error)
-	ClearHistory(userID string)
 	Close()
 }
 
 type Chat struct {
-	genaiClient        *genai.Client
-	genaiModel         *genai.GenerativeModel
-	defaultPrompt      string
-	userHistories      map[string][]string
-	userHistoriesMutex sync.Mutex
-	modelCfg         *loader.ModelConfig
+	genaiClient   *genai.Client
+	genaiModel    *genai.GenerativeModel
+	defaultPrompt string
+	historyMgr    history.HistoryManager
+	modelCfg      *loader.ModelConfig
 }
 
-func NewChat(token string, model string, defaultPrompt string, modelCfg *loader.ModelConfig) (Service, error) {
+func NewChat(token string, model string, defaultPrompt string, modelCfg *loader.ModelConfig, historyMgr history.HistoryManager) (Service, error) {
 	client, err := genai.NewClient(context.Background(), option.WithAPIKey(token))
 	if err != nil {
 		return nil, err
@@ -46,24 +44,22 @@ func NewChat(token string, model string, defaultPrompt string, modelCfg *loader.
 		genaiClient:   client,
 		genaiModel:    genaiModel,
 		defaultPrompt: defaultPrompt,
-		userHistories: make(map[string][]string),
-		modelCfg:         modelCfg,
+		historyMgr:    historyMgr,
+		modelCfg:      modelCfg,
 	}, nil
 }
 
 func (c *Chat) GetResponse(userID, username, message, timestamp, prompt string) (string, float64, string, error) {
-	var history string
+
 	if strings.ToLower(strings.TrimSpace(message)) == "/reset" {
-		c.ClearHistory(userID)
+		c.historyMgr.Clear(userID)
 		return "履歴をリセットしました！", 0, "", nil
 	}
 
-	c.userHistoriesMutex.Lock()
-	history = strings.Join(c.userHistories[userID], "\n")
-	c.userHistoriesMutex.Unlock()
+	historyStr := c.historyMgr.Get(userID)
 
 	currentTime := time.Now().Format("2006-01-02 15:04:05")
-	fullInput := prompt + "\n" + history + "\ndate time：" + currentTime + "\n" + message
+	fullInput := prompt + "\n" + historyStr + "\ndate time：" + currentTime + "\n" + message
 
 	var responseText string
 	var elapsed float64
@@ -85,12 +81,7 @@ func (c *Chat) GetResponse(userID, username, message, timestamp, prompt string) 
 		}
 	}
 
-	c.userHistoriesMutex.Lock()
-	c.userHistories[userID] = append(c.userHistories[userID], message, responseText)
-	if len(c.userHistories[userID]) > c.modelCfg.MaxHistorySize {
-		c.userHistories[userID] = c.userHistories[userID][len(c.userHistories[userID])-c.modelCfg.MaxHistorySize:]
-	}
-	c.userHistoriesMutex.Unlock()
+	c.historyMgr.Add(userID, message, responseText)
 
 	modelName := c.modelCfg.ModelName
 	if c.modelCfg.Ollama.Enabled {
@@ -142,6 +133,33 @@ func (c *Chat) getOllamaResponse(fullInput string) (string, float64, error) {
 	defer resp.Body.Close()
 
 	reader := bufio.NewReader(resp.Body)
+	responseText, fullResponse, err := parseOllamaStreamResponse(reader)
+	elapsed := float64(time.Since(start).Milliseconds())
+
+	if err != nil {
+		log.Printf("Ollamaレスポンス解析エラー: %v", err)
+		if len(fullResponse) > 0 {
+			lastLine := ""
+			lines := strings.Split(strings.TrimSuffix(fullResponse, "\n"), "\n")
+			if len(lines) > 0 {
+				lastLine = lines[len(lines)-1]
+			}
+			log.Printf("Ollama API partial response before error: %s", lastLine)
+		}
+		return "", elapsed, fmt.Errorf("Ollamaレスポンスの解析に失敗しました: %w", err)
+	}
+
+	lastLine := ""
+	lines := strings.Split(strings.TrimSuffix(fullResponse, "\n"), "\n")
+	if len(lines) > 0 {
+		lastLine = lines[len(lines)-1]
+	}
+	log.Printf("Ollama API response: %s", lastLine)
+
+	return responseText, elapsed, nil
+}
+
+func parseOllamaStreamResponse(reader *bufio.Reader) (string, string, error) {
 	var responseText string
 	var fullResponse string
 	for {
@@ -150,40 +168,34 @@ func (c *Chat) getOllamaResponse(fullInput string) (string, float64, error) {
 			if err == io.EOF {
 				break
 			}
-			return "", 0, fmt.Errorf("レスポンスの読み込みに失敗: %v", err)
+			return "", fullResponse, fmt.Errorf("レスポンスの読み込みに失敗: %w", err)
 		}
 		fullResponse += line
-		var result map[string]interface{}
-		err = json.Unmarshal([]byte(line), &result)
-		if err != nil {
-			return "", 0, fmt.Errorf("レスポンスのJSON解析に失敗: %v", err)
+
+		trimmedLine := strings.TrimSpace(line)
+		if trimmedLine == "" {
+			continue
 		}
 
-		response, ok := result["response"].(string)
+		var result map[string]interface{}
+		if err := json.Unmarshal([]byte(trimmedLine), &result); err != nil {
+			log.Printf("レスポンス行のJSON解析に失敗（処理は続行）: %v, line: %s", err, trimmedLine)
+			continue
+
+		responsePart, ok := result["response"].(string)
 		if ok {
-			responseText += response
+			responseText += responsePart
 		}
+	}
+
 
 		done, ok := result["done"].(bool)
 		if ok && done {
 			break
 		}
 	}
-
-	elapsed := float64(time.Since(start).Milliseconds())
-	lastLine := ""
-	lines := strings.Split(strings.TrimSuffix(fullResponse, "\n"), "\n")
-	if len(lines) > 0 {
-		lastLine = lines[len(lines)-1]
-	}
-	log.Printf("Ollama API response: %s", lastLine)
-	return responseText, elapsed, nil
-}
-
-func (c *Chat) ClearHistory(userID string) {
-	c.userHistoriesMutex.Lock()
-	defer c.userHistoriesMutex.Unlock()
-	delete(c.userHistories, userID)
+	// ループ終了後、最終的なテキストと全レスポンス、エラーなしを返す
+	return responseText, fullResponse, nil
 }
 
 func (c *Chat) Close() {
