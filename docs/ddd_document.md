@@ -82,24 +82,40 @@
 
 ### ドメインサービス / アプリケーションサービス / インフラストラクチャサービス
 
-- **ChatService** (`chat/chat.go`)
-  - 役割: LLM (Gemini) とのやり取り、および Gemini の Function Calling 機能を利用した `zu2l` API (天気/頭痛/ASP/地点情報) の呼び出し処理を担当する。
+- **ChatService** (`chat/chat.go`, `chat/prompt.go`, `chat/utils.go`, `chat/ollama.go`)
+  - 役割: LLM (Gemini, Ollama) とのやり取り、および Gemini の Function Calling 機能のディスパッチを担当する。天気関連の Function Calling 処理は `WeatherService` に委譲する。
   - 処理:
-    - `NewChat(token, model, defaultPrompt, modelCfg, historyMgr)`: Geminiクライアント、`zu2l` APIクライアント (`APIキー不要`)、`HistoryManager` を初期化する。`zutool` API に対応する `FunctionDeclaration` を含む `Tool` を定義し、Gemini モデルに設定する。
-    - `GetResponse(userID, username, message, timestamp, prompt)`:
-      1. `historyMgr.Get(userID)` を呼び出してユーザーの会話履歴を取得する。
-      2. 取得した履歴、ユーザー入力、プロンプト（ツール使用指示を含む）を結合して Gemini に送信する (`GenerateContent` を使用)。
+    - `NewChat(token, model, defaultPrompt, modelCfg, historyMgr)` (`chat/chat.go`): Geminiクライアント、`HistoryManager`、`WeatherService` を初期化する。`WeatherService` から取得した Function Declaration を含む `Tool` を定義し、Gemini モデルに設定する。
+    - `GetResponse(userID, username, message, timestamp, prompt)` (`chat/chat.go`):
+      1. `buildFullInput` (`chat/prompt.go`) を呼び出して、プロンプト、ツール指示、履歴、ユーザーメッセージを結合した入力文字列を生成する。
+      2. `genaiModel.GenerateContent` を使用して Gemini にリクエストを送信する。
       3. Gemini からの応答 (`resp.Candidates[0].Content.Parts`) をループで確認する。
-      4. 応答パーツの中に `genai.FunctionCall` 型のパーツが見つかった場合:
-         - 詳細なログ（どの関数が呼ばれたか、引数など）を出力する。
-         - `type switch` を使用して `genai.FunctionCall` 型であることを確認し、関数名と引数を取得する。
-         - 関数名に応じて `zutool` の対応する API (`GetWeatherPoint`, `GetWeatherStatus`, `GetPainStatus`, `GetOtenkiASP`) を呼び出す。
-         - API の実行結果 (`GetPainStatus` の場合は地域名、期間、各痛みレベルの割合など) を整形し、ユーザーへの応答として **即座に `return` する**。(この場合、履歴には追加されない)
-      5. ループ内で `genai.FunctionCall` が見つからなかった場合:
-         - Gemini が生成した通常のテキスト応答 (`genai.Text`) を取得する。
-         - `historyMgr.Add(userID, message, responseText)` を呼び出して、ユーザーのメッセージとGeminiの応答を履歴に追加する。
-         - テキスト応答をユーザーへの応答として `return` する。
-    - `Close()`: Geminiクライアントを閉じる。
+      4. 応答パーツの中に `genai.Text` 型が見つかった場合、その内容を `llmIntroText` バッファに追記する。
+      5. 応答パーツの中に `genai.FunctionCall` 型が見つかった場合:
+         - `weatherService.HandleFunctionCall` を呼び出して、天気関連の Function Call 処理を委譲する。
+         - `toolResult` に結果を格納し、`functionCallProcessed` フラグを立てる。（エラーハンドリングも含む）
+      6. ループ終了後、`functionCallProcessed` が `true` の場合:
+         - `llmIntroText` (導入文) と `toolResult` (ツール実行結果) を結合する。
+         - 結合した応答を `historyMgr.Add` で履歴に追加する。
+         - 結合した応答を `return` する (source は "zutool")。
+      7. `functionCallProcessed` が `false` の場合 (通常のテキスト応答):
+         - `llmIntroText` を取得する (空の場合は `getResponseText` (`chat/utils.go`) でフォールバック)。
+         - 応答を `historyMgr.Add` で履歴に追加する。
+         - テキスト応答を `return` する (source はモデル名)。
+    - `Close()` (`chat/chat.go`): Geminiクライアントを閉じる。
+    - `buildFullInput` (`chat/prompt.go`): LLMへの入力文字列を構築する。
+    - `getResponseText` (`chat/utils.go`): 応答テキスト抽出ヘルパー。
+    - (Ollama関連の `getOllamaResponse`, `parseOllamaStreamResponse` は `chat/ollama.go` に分離されている。)
+
+- **WeatherService** (`chat/weather.go`) (新規)
+  - 役割: 天気関連の Function Calling 処理と `zu2l` API との連携を担当する。
+  - 処理:
+    - `NewWeatherService`: `zutoolapi.Client` を初期化する。
+    - `GetFunctionDeclarations`: 天気関連の Function Declaration (`getWeather`, `getPainStatus`, `searchWeatherPoint`, `getOtenkiAspInfo`) のリストを返す。
+    - `HandleFunctionCall`: 受け取った `genai.FunctionCall` の名前 (`fn.Name`) に基づいて、対応する内部ハンドラ (`handleGetWeather` など) を呼び出す。
+    - `handleGetWeather`: `GetWeatherStatus` API を呼び出し、結果を整形して文字列として返す。**天気コードは `weatherEmojiMap` を使用して絵文字に変換される。**
+    - `handleGetPainStatus`, `handleSearchWeatherPoint`, `handleGetOtenkiAspInfo`: 各 Function Call の具体的な処理。`zutoolapi.Client` を使用して `zu2l` API を呼び出し、結果を整形して文字列として返す。
+    - `weatherEmojiMap`: 天気コードに対応する絵文字を定義する。
 
 - **HistoryManager** (`history/history.go`)
   - 役割: ユーザーごとのチャット履歴を管理する。
@@ -133,18 +149,36 @@
     - `LoadConfig()`: `.env`ファイルを読み込み、環境変数を設定する。エラー発生時は `log.Fatalf` せずにエラーを返す。
 
 - **chat/chat.go:**
-  - 役割: LLM (Gemini) との通信、会話履歴の管理、および Function Calling を介した `zu2l` API 連携の中心的なロジックを担う。
+  - 役割: `ChatService` の主要な実装。Gemini API との通信、Function Calling のディスパッチ（`WeatherService` への委譲を含む）、応答生成のコアロジックを担当。
   - 処理:
-    - `NewChat`: 依存関係（クライアント、マネージャー）を初期化し、`zutool` 用の `FunctionDeclaration` を定義してモデルに設定する。
-    - `GetResponse`:
-      - `HistoryManager` から会話履歴を取得する。
-      - 履歴とプロンプト（ツール使用ルールを含む）を結合して Gemini にリクエストを送信する。
-      - 応答の全パーツをループし、`type switch` で `genai.FunctionCall` を検出する。
-      - Function Call 検出時は、対応する `zutool` API を実行し、結果を `return` する。
-      - Function Call 非検出時は、通常のテキスト応答を取得し、`HistoryManager` に履歴を追加してから応答を `return` する。
-      - デバッグ用に、応答パーツの内容、型アサーション/`type switch` の結果、`switch` 文の実行状況などの詳細なログを出力する。
-    - `Close`: Geminiクライアントを閉じる。
-    - (Ollama関連の `getOllamaResponse`, `parseOllamaStreamResponse` も存在するが、現在は Gemini がメイン。)
+    - `NewChat`: サービスと依存関係 (`WeatherService` を含む) を初期化。
+    - `GetResponse`: ユーザーからのメッセージを受け取り、Gemini API と通信し、Function Calling を `WeatherService` に委譲して最終的な応答を生成する。
+    - `Close`: リソースを解放する。
+
+- **chat/prompt.go:**
+  - 役割: LLM に送信するプロンプト（入力文字列）の構築ロジックを担当。
+  - 処理:
+    - `buildFullInput`: システムプロンプト、ツール指示、会話履歴、ユーザーメッセージを結合する。
+
+- **chat/weather.go:** (新規)
+  - 役割: `WeatherService` の実装。天気関連の Function Calling 処理と `zu2l` API との連携を担当。
+  - 処理:
+    - `WeatherService` インターフェースと `weatherServiceImpl` 構造体を定義。
+    - `NewWeatherService`: サービスの初期化。
+    - `GetFunctionDeclarations`: 天気関連ツールの定義を返す。
+    - `HandleFunctionCall` および `handle*` メソッド群: 各 Function Call の具体的な処理と `zu2l` API 呼び出し。
+    - `weatherEmojiMap`: 天気コードと絵文字のマッピング。
+
+- **chat/utils.go:**
+  - 役割: `chat` パッケージ内で共通して使用されるヘルパー関数を提供する。
+  - 処理:
+    - `getResponseText`: Gemini の応答からテキスト部分を抽出する。
+
+- **chat/ollama.go:**
+  - 役割: Ollama LLM との連携に関するロジックを担当（現在は Gemini がメインのため、直接は使用されていない可能性あり）。
+  - 処理:
+    - `getOllamaResponse`: Ollama API にリクエストを送信する。
+    - `parseOllamaStreamResponse`: Ollama からのストリーミング応答を解析する。
 
 - **history/history.go:**
   - 役割: チャット履歴の管理ロジックを提供する。
