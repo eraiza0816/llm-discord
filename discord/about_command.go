@@ -19,16 +19,8 @@ func aboutCommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate, m
 		},
 	})
 
-	modelCfg, err := loader.LoadModelConfig("json/model.json")
-	if err != nil {
-		log.Printf("LoadModelConfig error: %v", err)
-		content := fmt.Sprintf("エラーが発生しました: %v", err)
-		_, err := s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-			Content: &content,
-		})
-		if err != nil {
-			log.Printf("InteractionResponseEdit error: %v", err)
-		}
+	if modelCfg == nil {
+		sendErrorResponse(s, i, fmt.Errorf("ボットの設定情報が見つかりませんでした"))
 		return
 	}
 
@@ -39,6 +31,7 @@ func aboutCommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate, m
 		Color:       0xa8ffee,
 	}
 
+	var err error
 	_, err = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
 		Embeds: &[]*discordgo.MessageEmbed{embed},
 	})

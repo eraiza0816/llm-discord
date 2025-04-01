@@ -3,203 +3,159 @@ package chat
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
-	"sync"
 	"time"
 
+	"github.com/eraiza0816/llm-discord/history"
 	"github.com/eraiza0816/llm-discord/loader"
 
 	"github.com/google/generative-ai-go/genai"
 	"google.golang.org/api/option"
-	"net/http"
-	"bytes"
-	"encoding/json"
-	"log"
-	"bufio"
-	"io"
 )
 
 type Service interface {
 	GetResponse(userID, username, message, timestamp, prompt string) (string, float64, string, error)
-	ClearHistory(userID string)
 	Close()
 }
 
 type Chat struct {
-	genaiClient        *genai.Client
-	genaiModel         *genai.GenerativeModel
-	defaultPrompt      string
-	userHistories      map[string][]string
-	userHistoriesMutex sync.Mutex
-	modelCfg         *loader.ModelConfig
+	genaiClient    *genai.Client
+	genaiModel     *genai.GenerativeModel
+	weatherService WeatherService
+	defaultPrompt  string
+	historyMgr     history.HistoryManager
+	modelCfg       *loader.ModelConfig
+	tools          []*genai.Tool
 }
 
-func NewChat(token string, model string, defaultPrompt string, modelCfg *loader.ModelConfig) (Service, error) {
-	client, err := genai.NewClient(context.Background(), option.WithAPIKey(token))
+func NewChat(token string, model string, defaultPrompt string, modelCfg *loader.ModelConfig, historyMgr history.HistoryManager) (Service, error) {
+	genaiClient, err := genai.NewClient(context.Background(), option.WithAPIKey(token))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Geminiクライアントの作成に失敗: %w", err)
+	}
+	genaiModel := genaiClient.GenerativeModel(model)
+
+	weatherService := NewWeatherService()
+
+	weatherFuncDeclarations := weatherService.GetFunctionDeclarations()
+
+	// 他ツール追加箇所
+	// 例: otherTools := []*genai.Tool{...}
+	// allFuncDeclarations := append(weatherFuncDeclarations, otherTools...)
+
+	// 現在は天気ツールのみ
+	tools := []*genai.Tool{
+		{
+			FunctionDeclarations: weatherFuncDeclarations,
+		},
 	}
 
-	genaiModel := client.GenerativeModel(model)
+	genaiModel.Tools = tools
 
 	return &Chat{
-		genaiClient:   client,
-		genaiModel:    genaiModel,
-		defaultPrompt: defaultPrompt,
-		userHistories: make(map[string][]string),
-		modelCfg:         modelCfg,
+		genaiClient:    genaiClient,
+		genaiModel:     genaiModel,
+		weatherService: weatherService, // 初期化済み WeatherService を設定
+		defaultPrompt:  defaultPrompt,
+		historyMgr:     historyMgr,
+		modelCfg:       modelCfg,
+		tools:          tools,
 	}, nil
 }
 
 func (c *Chat) GetResponse(userID, username, message, timestamp, prompt string) (string, float64, string, error) {
-	var history string
-	if strings.ToLower(strings.TrimSpace(message)) == "/reset" {
-		c.ClearHistory(userID)
-		return "履歴をリセットしました！", 0, "", nil
-	}
+	fullInput := buildFullInput(prompt, message, c.historyMgr, userID)
 
-	c.userHistoriesMutex.Lock()
-	history = strings.Join(c.userHistories[userID], "\n")
-	c.userHistoriesMutex.Unlock()
-
-	currentTime := time.Now().Format("2006-01-02 15:04:05")
-	fullInput := prompt + "\n" + history + "\ndate time：" + currentTime + "\n" + message
-
-	var responseText string
-	var elapsed float64
-	var err error
-
-	if c.modelCfg.Ollama.Enabled {
-		responseText, elapsed, err = c.getOllamaResponse(fullInput)
-		if err != nil {
-			log.Printf("Ollamaとの通信に失敗したため、Geminiにフォールバックします: %v", err)
-			responseText, elapsed, err = c.getGeminiResponse(fullInput)
-			if err != nil {
-				return "", elapsed, "", fmt.Errorf("Gemini APIからのエラー: %v", err)
-			}
-		}
-	} else {
-		responseText, elapsed, err = c.getGeminiResponse(fullInput)
-		if err != nil {
-			return "", elapsed, "", fmt.Errorf("Gemini APIからのエラー: %v", err)
-		}
-	}
-
-	c.userHistoriesMutex.Lock()
-	c.userHistories[userID] = append(c.userHistories[userID], message, responseText)
-	if len(c.userHistories[userID]) > c.modelCfg.MaxHistorySize {
-		c.userHistories[userID] = c.userHistories[userID][len(c.userHistories[userID])-c.modelCfg.MaxHistorySize:]
-	}
-	c.userHistoriesMutex.Unlock()
-
-	modelName := c.modelCfg.ModelName
-	if c.modelCfg.Ollama.Enabled {
-		modelName = c.modelCfg.Ollama.ModelName
-	}
-
-	return responseText, elapsed, modelName, nil
-}
-
-func (c *Chat) getGeminiResponse(fullInput string) (string, float64, error) {
 	ctx := context.Background()
 	start := time.Now()
-
 	resp, err := c.genaiModel.GenerateContent(ctx, genai.Text(fullInput))
 	elapsed := float64(time.Since(start).Milliseconds())
-
 	if err != nil {
-		return "", elapsed, fmt.Errorf("Gemini APIからのエラー: %v", err)
+		return "", elapsed, "", fmt.Errorf("Gemini APIからのエラー: %w", err)
 	}
 
-	responseText := getResponseText(resp)
-	return responseText, elapsed, nil
-}
+	if resp.Candidates != nil && len(resp.Candidates) > 0 {
+		candidate := resp.Candidates[0]
+		if candidate.Content != nil && len(candidate.Content.Parts) > 0 {
+			log.Printf("Gemini response parts: %+v", candidate.Content.Parts)
 
-func (c *Chat) getOllamaResponse(fullInput string) (string, float64, error) {
-	start := time.Now()
-	url := c.modelCfg.Ollama.APIEndpoint
+			var functionCallProcessed bool
+			var llmIntroText strings.Builder
+			var toolResult string
+			var toolErr error
 
-	payload := map[string]string{
-		"prompt": fullInput,
-		"model":  c.modelCfg.Ollama.ModelName,
-	}
-	jsonPayload, err := json.Marshal(payload)
-	if err != nil {
-		return "", 0, fmt.Errorf("JSONの作成に失敗: %v", err)
-	}
+			for i, part := range candidate.Content.Parts {
+				log.Printf("Processing part %d", i)
+				switch v := part.(type) {
+				case genai.Text:
+					log.Printf("Part %d is genai.Text: %s", i, string(v))
+					llmIntroText.WriteString(string(v))
+				case genai.FunctionCall:
+					log.Printf("Part %d IS a genai.FunctionCall!", i)
+					fn := v
+					log.Printf("Function Call triggered: %s, Args: %v", fn.Name, fn.Args)
+					functionCallProcessed = true
 
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonPayload))
-	if err != nil {
-		return "", 0, fmt.Errorf("リクエストの作成に失敗: %v", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", 0, fmt.Errorf("Ollama APIへのリクエストに失敗: %v", err)
-	}
-	defer resp.Body.Close()
-
-	reader := bufio.NewReader(resp.Body)
-	var responseText string
-	var fullResponse string
-	for {
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			if err == io.EOF {
-				break
+					toolResult, toolErr = c.weatherService.HandleFunctionCall(fn)
+					if toolErr != nil {
+						log.Printf("Error handling function call %s via WeatherService: %v", fn.Name, toolErr)
+						toolResult = fmt.Sprintf("関数の処理中にエラーが発生しました: %v", toolErr)
+						toolErr = nil
+					}
+				default:
+					log.Printf("Part %d is an unexpected type: %T", i, v)
+				}
 			}
-			return "", 0, fmt.Errorf("レスポンスの読み込みに失敗: %v", err)
-		}
-		fullResponse += line
-		var result map[string]interface{}
-		err = json.Unmarshal([]byte(line), &result)
-		if err != nil {
-			return "", 0, fmt.Errorf("レスポンスのJSON解析に失敗: %v", err)
-		}
 
-		response, ok := result["response"].(string)
-		if ok {
-			responseText += response
-		}
+			if functionCallProcessed {
+				finalResponse := llmIntroText.String()
+				if finalResponse != "" && toolResult != "" {
+					if !strings.HasSuffix(finalResponse, "\n") {
+						finalResponse += "\n"
+					}
+				}
+				finalResponse += toolResult
 
-		done, ok := result["done"].(bool)
-		if ok && done {
-			break
+				log.Printf("Combined LLM intro and tool result: %s", finalResponse)
+
+				if finalResponse != "" {
+					c.historyMgr.Add(userID, message, finalResponse)
+					log.Printf("Added combined response to history for user %s", userID)
+				} else {
+					log.Printf("Skipping history add for user %s because combined response is empty.", userID)
+				}
+				return finalResponse, 0, "zutool", nil
+			}
+
+			log.Println("No FunctionCall was processed in response parts.")
+			responseText := llmIntroText.String()
+			if responseText == "" {
+				responseText = getResponseText(resp)
+				log.Printf("Falling back to getResponseText: %s", responseText)
+			}
+
+			log.Printf("Final response text (no function call): %s", responseText)
+			if responseText != "" {
+				c.historyMgr.Add(userID, message, responseText)
+				log.Printf("Added normal text response to history for user %s", userID)
+			} else {
+				log.Printf("Skipping history add for user %s because responseText is empty.", userID)
+			}
+			return responseText, elapsed, c.modelCfg.ModelName, nil
+
+		} else {
+			log.Println("Gemini response candidate content or parts are empty.")
 		}
+	} else {
+		log.Println("Gemini response candidates are empty.")
 	}
 
-	elapsed := float64(time.Since(start).Milliseconds())
-	lastLine := ""
-	lines := strings.Split(strings.TrimSuffix(fullResponse, "\n"), "\n")
-	if len(lines) > 0 {
-		lastLine = lines[len(lines)-1]
-	}
-	log.Printf("Ollama API response: %s", lastLine)
-	return responseText, elapsed, nil
-}
-
-func (c *Chat) ClearHistory(userID string) {
-	c.userHistoriesMutex.Lock()
-	defer c.userHistoriesMutex.Unlock()
-	delete(c.userHistories, userID)
+	log.Println("No valid candidates found in Gemini response.")
+	responseText := "すみません、応答を取得できませんでした。"
+	return responseText, elapsed, c.modelCfg.ModelName, nil
 }
 
 func (c *Chat) Close() {
 	c.genaiClient.Close()
-}
-
-func getResponseText(resp *genai.GenerateContentResponse) string {
-	if resp == nil || len(resp.Candidates) == 0 || resp.Candidates[0].Content == nil {
-		return "Gemini APIからの応答がありませんでした。"
-	}
-
-	var responseText string
-	for _, part := range resp.Candidates[0].Content.Parts {
-		if text, ok := part.(genai.Text); ok {
-			responseText += string(text)
-		}
-	}
-	return responseText
 }

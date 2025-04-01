@@ -3,21 +3,37 @@ package discord
 import (
 	"log"
 	"os"
+	"fmt"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/eraiza0816/llm-discord/chat"
+	"github.com/eraiza0816/llm-discord/history"
 	"github.com/eraiza0816/llm-discord/loader"
+
 )
 
-func setupHandlers(s *discordgo.Session, chatSvc chat.Service, modelCfg *loader.ModelConfig) {
-	err := os.MkdirAll("log", 0755)
+func setupHandlers(s *discordgo.Session, geminiAPIKey string) error {
+	modelCfg, err := loader.LoadModelConfig("json/model.json")
 	if err != nil {
-		log.Fatalf("Error creating directory: %v", err)
+		return fmt.Errorf("model.json の読み込みに失敗しました: %w", err)
+	}
+
+	defaultPrompt := modelCfg.Prompts["default"]
+	historyMgr := history.NewInMemoryHistoryManager(modelCfg.MaxHistorySize)
+
+	chatSvc, err := chat.NewChat(geminiAPIKey, modelCfg.ModelName, defaultPrompt, modelCfg, historyMgr)
+	if err != nil {
+		return fmt.Errorf("Chat サービスの初期化に失敗しました: %w", err)
+	}
+
+	err = os.MkdirAll("log", 0755)
+	if err != nil {
+		return fmt.Errorf("log ディレクトリの作成に失敗しました: %w", err)
 	}
 
 	logFile, err := os.OpenFile("log/app.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
-		log.Fatalf("Error opening file: %v", err)
+		return fmt.Errorf("ログファイル 'log/app.log' のオープンに失敗しました: %w", err)
 	}
 	log.SetOutput(logFile)
 
@@ -31,13 +47,14 @@ func setupHandlers(s *discordgo.Session, chatSvc chat.Service, modelCfg *loader.
 		case "chat":
 			chatCommandHandler(s, i, chatSvc, modelCfg)
 		case "reset":
-			resetCommandHandler(s, i, chatSvc)
+			resetCommandHandler(s, i, historyMgr)
 		case "about":
 			aboutCommandHandler(s, i, modelCfg)
 		case "edit":
 			editCommandHandler(s, i, chatSvc)
 		}
 	})
+	return nil
 }
 
 func onReady(s *discordgo.Session, event *discordgo.Ready) {
