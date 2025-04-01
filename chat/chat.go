@@ -78,7 +78,7 @@ func (c *Chat) GetResponse(userID, username, message, timestamp, prompt string) 
 	if resp.Candidates != nil && len(resp.Candidates) > 0 {
 		candidate := resp.Candidates[0]
 		if candidate.Content != nil && len(candidate.Content.Parts) > 0 {
-			log.Printf("Gemini response parts: %+v", candidate.Content.Parts)
+			// log.Printf("Gemini response parts: %+v", candidate.Content.Parts) // デバッグ用ログコメントアウト
 
 			var functionCallProcessed bool
 			var llmIntroText strings.Builder
@@ -86,25 +86,25 @@ func (c *Chat) GetResponse(userID, username, message, timestamp, prompt string) 
 			var toolErr error
 
 			for i, part := range candidate.Content.Parts {
-				log.Printf("Processing part %d", i)
+				// log.Printf("Processing part %d", i) // デバッグ用ログコメントアウト
 				switch v := part.(type) {
 				case genai.Text:
-					log.Printf("Part %d is genai.Text: %s", i, string(v))
+					// log.Printf("Part %d is genai.Text: %s", i, string(v)) // デバッグ用ログコメントアウト
 					llmIntroText.WriteString(string(v))
 				case genai.FunctionCall:
-					log.Printf("Part %d IS a genai.FunctionCall!", i)
+					// log.Printf("Part %d IS a genai.FunctionCall!", i) // デバッグ用ログコメントアウト
 					fn := v
-					log.Printf("Function Call triggered: %s, Args: %v", fn.Name, fn.Args)
+					// log.Printf("Function Call triggered: %s, Args: %v", fn.Name, fn.Args) // デバッグ用ログコメントアウト
 					functionCallProcessed = true
 
 					toolResult, toolErr = c.weatherService.HandleFunctionCall(fn)
 					if toolErr != nil {
-						log.Printf("Error handling function call %s via WeatherService: %v", fn.Name, toolErr)
+						log.Printf("Error handling function call %s via WeatherService: %v", fn.Name, toolErr) // エラーログは残す
 						toolResult = fmt.Sprintf("関数の処理中にエラーが発生しました: %v", toolErr)
-						toolErr = nil
+						toolErr = nil // エラーは処理済みとしてnilにする
 					}
 				default:
-					log.Printf("Part %d is an unexpected type: %T", i, v)
+					log.Printf("Part %d is an unexpected type: %T", i, v) // 未知の型はログに残す
 				}
 			}
 
@@ -117,41 +117,41 @@ func (c *Chat) GetResponse(userID, username, message, timestamp, prompt string) 
 				}
 				finalResponse += toolResult
 
-				log.Printf("Combined LLM intro and tool result: %s", finalResponse)
+				// log.Printf("Combined LLM intro and tool result: %s", finalResponse) // デバッグ用ログコメントアウト
 
 				if finalResponse != "" {
 					c.historyMgr.Add(userID, message, finalResponse)
-					log.Printf("Added combined response to history for user %s", userID)
+					// log.Printf("Added combined response to history for user %s", userID) // デバッグ用ログコメントアウト
 				} else {
-					log.Printf("Skipping history add for user %s because combined response is empty.", userID)
+					log.Printf("Skipping history add for user %s because combined response is empty.", userID) // これは残す
 				}
 				return finalResponse, 0, "zutool", nil
 			}
 
-			log.Println("No FunctionCall was processed in response parts.")
+			// log.Println("No FunctionCall was processed in response parts.") // デバッグ用ログコメントアウト
 			responseText := llmIntroText.String()
 			if responseText == "" {
 				responseText = getResponseText(resp)
-				log.Printf("Falling back to getResponseText: %s", responseText)
+				// log.Printf("Falling back to getResponseText: %s", responseText) // デバッグ用ログコメントアウト
 			}
 
-			log.Printf("Final response text (no function call): %s", responseText)
+			// log.Printf("Final response text (no function call): %s", responseText) // デバッグ用ログコメントアウト
 			if responseText != "" {
 				c.historyMgr.Add(userID, message, responseText)
-				log.Printf("Added normal text response to history for user %s", userID)
+				// log.Printf("Added normal text response to history for user %s", userID) // デバッグ用ログコメントアウト
 			} else {
-				log.Printf("Skipping history add for user %s because responseText is empty.", userID)
+				log.Printf("Skipping history add for user %s because responseText is empty.", userID) // これは残す
 			}
 			return responseText, elapsed, c.modelCfg.ModelName, nil
 
 		} else {
-			log.Println("Gemini response candidate content or parts are empty.")
+			log.Println("Gemini response candidate content or parts are empty.") // これは残す
 		}
 	} else {
-		log.Println("Gemini response candidates are empty.")
+		log.Println("Gemini response candidates are empty.") // これは残す
 	}
 
-	log.Println("No valid candidates found in Gemini response.")
+	log.Println("No valid candidates found in Gemini response.") // これは残す
 	responseText := "すみません、応答を取得できませんでした。"
 	return responseText, elapsed, c.modelCfg.ModelName, nil
 }
