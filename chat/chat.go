@@ -40,7 +40,7 @@ func NewChat(token string, model string, defaultPrompt string, modelCfg *loader.
 
 	weatherFuncDeclarations := weatherService.GetFunctionDeclarations()
 
-	// 他のツールがあればここに追加する
+	// 他ツール追加箇所
 	// 例: otherTools := []*genai.Tool{...}
 	// allFuncDeclarations := append(weatherFuncDeclarations, otherTools...)
 
@@ -56,7 +56,7 @@ func NewChat(token string, model string, defaultPrompt string, modelCfg *loader.
 	return &Chat{
 		genaiClient:    genaiClient,
 		genaiModel:     genaiModel,
-		weatherService: weatherService, // 初期化した WeatherService を設定
+		weatherService: weatherService, // 初期化済み WeatherService を設定
 		defaultPrompt:  defaultPrompt,
 		historyMgr:     historyMgr,
 		modelCfg:       modelCfg,

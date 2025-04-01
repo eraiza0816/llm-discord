@@ -113,8 +113,9 @@
     - `NewWeatherService`: `zutoolapi.Client` を初期化する。
     - `GetFunctionDeclarations`: 天気関連の Function Declaration (`getWeather`, `getPainStatus`, `searchWeatherPoint`, `getOtenkiAspInfo`) のリストを返す。
     - `HandleFunctionCall`: 受け取った `genai.FunctionCall` の名前 (`fn.Name`) に基づいて、対応する内部ハンドラ (`handleGetWeather` など) を呼び出す。
-    - `handleGetWeather`: `GetWeatherStatus` API を呼び出し、結果を整形して文字列として返す。**天気コードは `weatherEmojiMap` を使用して絵文字に変換される。**
-    - `handleGetPainStatus`, `handleSearchWeatherPoint`, `handleGetOtenkiAspInfo`: 各 Function Call の具体的な処理。`zutoolapi.Client` を使用して `zu2l` API を呼び出し、結果を整形して文字列として返す。
+    - `handleGetWeather`, `handleGetPainStatus`, `handleSearchWeatherPoint`, `handleGetOtenkiAspInfo`: 各 Function Call の具体的な処理。`zutoolapi.Client` を使用して `zu2l` API を呼び出し、結果を整形して文字列として返す。地点情報の取得や天気コードの絵文字変換はヘルパー関数を利用する。
+    - `getLocationInfo` (ヘルパー関数): `GetWeatherPoint` API を呼び出し、地点コードと地点名を取得する共通処理。
+    - `getWeatherEmoji` (ヘルパー関数): 天気コード（数値または文字列）を受け取り、`weatherEmojiMap` を参照して対応する絵文字を返す共通処理。
     - `weatherEmojiMap`: 天気コードに対応する絵文字を定義する。
 
 - **HistoryManager** (`history/history.go`)
@@ -166,7 +167,8 @@
     - `WeatherService` インターフェースと `weatherServiceImpl` 構造体を定義。
     - `NewWeatherService`: サービスの初期化。
     - `GetFunctionDeclarations`: 天気関連ツールの定義を返す。
-    - `HandleFunctionCall` および `handle*` メソッド群: 各 Function Call の具体的な処理と `zu2l` API 呼び出し。
+    - `HandleFunctionCall` および `handle*` メソッド群: 各 Function Call の具体的な処理と `zu2l` API 呼び出し。地点情報取得や絵文字変換はヘルパー関数を利用。
+    - `getLocationInfo`, `getWeatherEmoji` (ヘルパー関数): コードの共通化と可読性向上のための内部ヘルパー。
     - `weatherEmojiMap`: 天気コードと絵文字のマッピング。
 
 - **chat/utils.go:**
@@ -255,3 +257,6 @@
 
 ## 今後の展望
 - 検索機能を持たせる。GeminiのグラウンディングAPI を使って，ユーザーからの質問を受け付けて、検索結果とGeminiまたはOllamaの応答を組み合わせて、ユーザーに回答する。
+
+## 変更履歴
+- 2025/04/01: コード中のコメントの表現を丁寧語から簡潔な記述に修正。
