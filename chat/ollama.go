@@ -10,22 +10,18 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"github.com/eraiza0816/llm-discord/loader" // loader.OllamaConfig を使うためインポートは必要
 )
 
 // getOllamaResponse は Ollama API にリクエストを送信し、ストリーミングレスポンスを処理します。
-// 注意: この関数は現在 chat.go 内で直接呼び出されていません。
-func (c *Chat) getOllamaResponse(userID, fullInput string) (string, float64, error) {
-	log.Println("Warning: Ollama history processing is not implemented yet.")
-	// Ollama 向けの履歴処理が必要な場合は、ここで userHistory を取得・加工する
+// 引数に ollamaCfg を追加
+func (c *Chat) getOllamaResponse(userID, message, fullInput string, ollamaCfg loader.OllamaConfig) (string, float64, error) {
+	// Ollama 向けの履歴処理が必要な場合は、ここで userHistory を取得・加工する (今回は fullInput をそのまま使う)
 
 	start := time.Now()
-	// modelCfg と Ollama 設定が有効か確認
-	if c.modelCfg == nil {
-		return "", 0, fmt.Errorf("モデル設定がロードされていません")
-	}
-	// OllamaConfig は構造体なので nil チェックは不要。フィールドが空かで判断。
-	url := c.modelCfg.Ollama.APIEndpoint
-	modelName := c.modelCfg.Ollama.ModelName
+	// 引数で渡された ollamaCfg を使用
+	url := ollamaCfg.APIEndpoint
+	modelName := ollamaCfg.ModelName
 	if url == "" || modelName == "" {
 		return "", 0, fmt.Errorf("Ollama APIエンドポイントまたはモデル名が設定されていません")
 	}
@@ -87,8 +83,13 @@ func (c *Chat) getOllamaResponse(userID, fullInput string) (string, float64, err
 	log.Printf("Ollama API response (last line): %s", lastLine)
 	log.Printf("Ollama full response text: %s", responseText) // 完全なテキストもログ出力
 
-	// Ollamaの場合も履歴に追加する処理が必要
-	// c.historyMgr.Add(userID, message, responseText) // message がこのスコープにないため注意
+	// Ollamaの場合も履歴に追加する
+	if responseText != "" {
+		c.historyMgr.Add(userID, message, responseText)
+		log.Printf("Added Ollama response to history for user %s", userID)
+	} else {
+		log.Printf("Skipping history add for user %s because Ollama responseText is empty.", userID)
+	}
 
 	return responseText, elapsed, nil
 }

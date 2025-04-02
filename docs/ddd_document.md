@@ -71,6 +71,7 @@
 
 - **モデル設定 (ModelConfig)** (`loader/model.go`)
   - モデル名: 使用するLLMのモデル名 (model_name)。
+  - **セカンダリモデル名 (SecondaryModelName)**: Gemini API のクォータ超過 (429エラー) 時にフォールバックとして試行するモデル名 (任意)。
   - アイコン: Botのアイコン (icon)。
   - プロンプト: LLMへの指示文 (prompts)。ユーザーごと、またはデフォルトの指示文が設定可能。
   - BOTの説明: BOTの説明 (about)。
@@ -85,23 +86,29 @@
 - **ChatService** (`chat/chat.go`, `chat/prompt.go`, `chat/utils.go`, `chat/ollama.go`)
   - 役割: LLM (Gemini, Ollama) とのやり取り、および Gemini の Function Calling 機能のディスパッチを担当する。天気関連の Function Calling 処理は `WeatherService` に委譲する。
   - 処理:
-    - `NewChat(token, model, defaultPrompt, modelCfg, historyMgr)` (`chat/chat.go`): Geminiクライアント、`HistoryManager`、`WeatherService` を初期化する。`WeatherService` から取得した Function Declaration を含む `Tool` を定義し、Gemini モデルに設定する。
+    - `NewChat(token, historyMgr)` (`chat/chat.go`): Geminiクライアント、`HistoryManager`、`WeatherService` を初期化する。初期の Gemini モデル名は `model.json` から読み込むが、設定自体は保持しない。`WeatherService` から取得した Function Declaration を含む `Tool` を定義し、初期 Gemini モデルに設定する。
     - `GetResponse(userID, username, message, timestamp, prompt)` (`chat/chat.go`):
-      1. `buildFullInput` (`chat/prompt.go`) を呼び出して、プロンプト、ツール指示、履歴、ユーザーメッセージを結合した入力文字列を生成する。
-      2. `genaiModel.GenerateContent` を使用して Gemini にリクエストを送信する。
-      3. Gemini からの応答 (`resp.Candidates[0].Content.Parts`) をループで確認する。
-      4. 応答パーツの中に `genai.Text` 型が見つかった場合、その内容を `llmIntroText` バッファに追記する。
+      1. **`model.json` を読み込む。**
+      2. `buildFullInput` (`chat/prompt.go`) を呼び出して、プロンプト、ツール指示、履歴、ユーザーメッセージを結合した入力文字列を生成する。
+      3. `model.json` の `ollama.enabled` が `true` の場合、`getOllamaResponse` を呼び出して Ollama にリクエストを送信する。
+      4. `ollama.enabled` が `false` の場合、`model.json` の `model_name` を使用して Gemini にリクエストを送信する (`genaiModel.GenerateContent`)。
+      5. **Gemini API から 429 (Quota Exceeded) エラーが返された場合:**
+         - `model.json` の `secondary_model_name` が設定されていれば、そのモデルで Gemini API に再リクエストする。
+         - 再リクエストも失敗した場合、または `secondary_model_name` が未設定の場合で、かつ `model.json` の `ollama.enabled` が `true` であれば、`getOllamaResponse` を呼び出して Ollama にフォールバックする。
+         - 上記いずれのフォールバックも実行できない場合は、エラーを返す。
+      6. Gemini からの応答 (`resp.Candidates[0].Content.Parts`) をループで確認する。
+      7. 応答パーツの中に `genai.Text` 型が見つかった場合、その内容を `llmIntroText` バッファに追記する。
       5. 応答パーツの中に `genai.FunctionCall` 型が見つかった場合:
          - `weatherService.HandleFunctionCall` を呼び出して、天気関連の Function Call 処理を委譲する。
          - `toolResult` に結果を格納し、`functionCallProcessed` フラグを立てる。（エラーハンドリングも含む）
-      6. ループ終了後、`functionCallProcessed` が `true` の場合:
+      8. ループ終了後、`functionCallProcessed` が `true` の場合:
          - `llmIntroText` (導入文) と `toolResult` (ツール実行結果) を結合する。
          - 結合した応答を `historyMgr.Add` で履歴に追加する。
          - 結合した応答を `return` する (source は "zutool")。
-      7. `functionCallProcessed` が `false` の場合 (通常のテキスト応答):
+      9. `functionCallProcessed` が `false` の場合 (通常のテキスト応答):
          - `llmIntroText` を取得する (空の場合は `getResponseText` (`chat/utils.go`) でフォールバック)。
          - 応答を `historyMgr.Add` で履歴に追加する。
-         - テキスト応答を `return` する (source はモデル名)。
+         - テキスト応答を `return` する (source は実際に使用されたモデル名)。
     - `Close()` (`chat/chat.go`): Geminiクライアントを閉じる。
     - `buildFullInput` (`chat/prompt.go`): LLMへの入力文字列を構築する。
     - `getResponseText` (`chat/utils.go`): 応答テキスト抽出ヘルパー。
@@ -150,10 +157,10 @@
     - `LoadConfig()`: `.env`ファイルを読み込み、環境変数を設定する。エラー発生時は `log.Fatalf` せずにエラーを返す。
 
 - **chat/chat.go:**
-  - 役割: `ChatService` の主要な実装。Gemini API との通信、Function Calling のディスパッチ（`WeatherService` への委譲を含む）、応答生成のコアロジックを担当。
+  - 役割: `ChatService` の主要な実装。LLM (Gemini, Ollama) API との通信、Gemini の Function Calling のディスパッチ（`WeatherService` への委譲を含む）、応答生成のコアロジック、**エラー時のフォールバック処理**を担当。
   - 処理:
-    - `NewChat`: サービスと依存関係 (`WeatherService` を含む) を初期化。
-    - `GetResponse`: ユーザーからのメッセージを受け取り、Gemini API と通信し、Function Calling を `WeatherService` に委譲して最終的な応答を生成する。
+    - `NewChat`: サービスと依存関係 (`WeatherService` を含む) を初期化。**`model.json` は初期モデル名取得のために一時的に読み込むが、設定は保持しない。**
+    - `GetResponse`: **コマンド実行ごとに `model.json` を読み込む。** ユーザーからのメッセージを受け取り、`model.json` の設定に基づいて使用するLLM (Ollama または Gemini) を決定する。**Gemini API で 429 エラーが発生した場合、`secondary_model_name` で再試行し、必要に応じて Ollama にフォールバックする。** Gemini の場合は Function Calling を `WeatherService` に委譲し、Ollama の場合は `getOllamaResponse` を呼び出して応答を取得する。最終的な応答を生成する。
     - `Close`: リソースを解放する。
 
 - **chat/prompt.go:**
@@ -177,9 +184,9 @@
     - `getResponseText`: Gemini の応答からテキスト部分を抽出する。
 
 - **chat/ollama.go:**
-  - 役割: Ollama LLM との連携に関するロジックを担当（現在は Gemini がメインのため、直接は使用されていない可能性あり）。
+  - 役割: Ollama LLM との連携に関するロジックを担当。
   - 処理:
-    - `getOllamaResponse`: Ollama API にリクエストを送信する。
+    - `getOllamaResponse`: **引数で受け取った `OllamaConfig` を使用して** Ollama API にリクエストを送信し、応答を取得して履歴に追加する。
     - `parseOllamaStreamResponse`: Ollama からのストリーミング応答を解析する。
 
 - **history/history.go:**
@@ -196,7 +203,7 @@
 - **loader/model.go:**
   - 役割: `model.json` の読み込み処理と構造体定義を行う。
   - 処理:
-    - `ModelConfig` 構造体などを定義。
+    - `ModelConfig` 構造体などを定義。**`SecondaryModelName` フィールドを追加。**
     - `LoadModelConfig(filepath)`: `model.json`ファイルを読み込み、`ModelConfig`構造体にマッピングする。
     - `GetPromptByUser(username)`: `ModelConfig` からユーザー固有またはデフォルトのプロンプトを取得する。
 
@@ -214,14 +221,14 @@
 - **discord/handler.go:**
   - 役割: Discordのイベントハンドリングとコマンドディスパッチ、サービスの初期化を行う。
   - 処理:
-    - `setupHandlers(s, geminiAPIKey)`: Bot起動時に呼び出され、ログ設定、`model.json` の読み込み、`HistoryManager` と `ChatService` の初期化、コマンドハンドラの登録を行う。エラー発生時は `log.Fatalf` せずにエラーを返す。
-    - `interactionCreate` ハンドラ: 受け取ったインタラクションがアプリケーションコマンドの場合、コマンド名に応じて各コマンドハンドラ関数を呼び出す。`chatSvc`, `modelCfg`, `historyMgr` などの必要な依存関係を渡す。
+    - `setupHandlers(s, geminiAPIKey)`: Bot起動時に呼び出され、ログ設定、`HistoryManager` と `ChatService` の初期化、コマンドハンドラの登録を行う。**`model.json` の読み込みはここで行わない。** エラー発生時は `log.Fatalf` せずにエラーを返す。
+    - `interactionCreate` ハンドラ: 受け取ったインタラクションがアプリケーションコマンドの場合、コマンド名に応じて各コマンドハンドラ関数を呼び出す。**`modelCfg` は渡さない。**
     - `onReady`: Bot準備完了時のログ出力。
 
 - **discord/chat_command.go:**
   - 役割: `/chat` コマンドの処理を行う。
   - 処理:
-    - `chatCommandHandler(s, i, chatSvc, modelCfg)`: `discord/custom_prompt.go` の `GetCustomPromptForUser` でカスタムプロンプトを取得し、`chatSvc.GetResponse` を呼び出してLLMからの応答を取得し、結果をEmbedで表示する。エラーハンドリングは `sendErrorResponse` を使用。
+    - `chatCommandHandler(s, i, chatSvc)`: **コマンド実行時に `model.json` を読み込む。** `discord/custom_prompt.go` の `GetCustomPromptForUser` でカスタムプロンプトを取得し、`chatSvc.GetResponse` を呼び出してLLMからの応答を取得し、結果をEmbedで表示する。エラーハンドリングは `sendErrorResponse` を使用。
 
 - **discord/reset_command.go:**
   - 役割: `/reset` コマンドの処理を行う。
@@ -231,7 +238,7 @@
 - **discord/about_command.go:**
   - 役割: `/about` コマンドの処理を行う。
   - 処理:
-    - `aboutCommandHandler(s, i, modelCfg)`: 引数で受け取った `modelCfg` を元にBotの説明Embedを作成して表示する。エラーハンドリングは `sendErrorResponse` を使用。
+    - `aboutCommandHandler(s, i)`: **コマンド実行時に `model.json` を読み込む。** 読み込んだ `modelCfg` を元にBotの説明Embedを作成して表示する。エラーハンドリングは `sendErrorResponse` を使用。
 
 - **discord/utils.go:** (新規)
   - 役割: Discord関連の共通ユーティリティ関数を提供する。
@@ -239,10 +246,10 @@
     - `sendErrorResponse`: 標準的なエラー応答Embedを送信する。
     - `sendEphemeralErrorResponse`: 本人にのみ見えるエラー応答を送信する。
 
-- **discord/embeds.go:** (新規)
+- **discord/embeds.go:**
   - 役割: Discord Embed作成に関するヘルパー関数を提供する。
   - 処理:
-    - `splitToEmbedFields`: 長いテキストをEmbedフィールドの最大文字数で分割する。
+    - `splitToEmbedFields`: LLMからの応答テキストを受け取り、Discord Embedフィールドの文字数制限(1024文字)に合わせて処理する。**1024文字を超える場合は、複数のフィールドに分割して表示する。** フィールド名は空にする。
 
 - **discord/types.go:** (新規)
   - 役割: `discord` パッケージ内で共通して使用される型定義を行う。
@@ -259,5 +266,11 @@
 - 検索機能を持たせる。GeminiのグラウンディングAPI を使って，ユーザーからの質問を受け付けて、検索結果とGeminiまたはOllamaの応答を組み合わせて、ユーザーに回答する。
 
 ## 変更履歴
+- 2025/04/02: `/chat`, `/about` コマンド実行時に `model.json` を読み込むように変更。
+- 2025/04/02: Gemini API 429 エラー時に `secondary_model_name` で再試行し、Ollama へフォールバックする機能を追加。`loader.ModelConfig` に `SecondaryModelName` フィールドを追加。
+- 2025/04/02: `discord/embeds.go` の `splitToEmbedFields` を修正し、1024文字を超える場合に複数のフィールドに分割して表示するように変更。
+- 2025/04/02: `chat/chat.go` に Ollama と Gemini の処理分岐を追加。`chat/ollama.go` の履歴追加処理を有効化。
+- 2025/04/02: `discord/embeds.go` の `splitToEmbedFields` を修正し、1024文字を超える場合に省略表示するように変更。Discordの文字数制限エラーに対応。
+- 2025/04/02: `discord/embeds.go` の `splitToEmbedFields` を修正し、Embedフィールド名を空にして非表示に変更。
 - 2025/04/01: `chat/chat.go` 内の冗長なデバッグログ出力をコメントアウトし、ログ量を削減。
 - 2025/04/01: コード中のコメントの表現を丁寧語から簡潔な記述に修正。
