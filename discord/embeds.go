@@ -40,23 +40,28 @@ func splitToEmbedFields(text string) []*discordgo.MessageEmbedField {
 				break
 			}
 			chunkLength = allowedLength - ellipsisLen // 省略記号の分を引く
+			// chunkLength 分のルーンを取り出して文字列に変換
 			chunk = string(runes[:chunkLength]) + ellipsis
 			remainingText = "" // ループを終了させる
 		} else {
 			// 制限を超えない場合
+			// chunkLength 分のルーンを取り出して文字列に変換
 			chunk = string(runes[:chunkLength])
+			// 残りのルーンを文字列に変換
 			remainingText = string(runes[chunkLength:])
 		}
 
 		// フィールド数が上限に達し、かつ残りテキストがある場合は、最後のチャンクに省略記号を追加
 		if len(fields) == maxFields-1 && len(remainingText) > 0 {
-			if chunkLength > maxFieldLength-ellipsisLen {
-				// 省略記号を追加するために末尾を削る
-				chunkRunes := []rune(chunk)
+			chunkRunes := []rune(chunk) // 現在のチャンクをルーンに変換
+			currentChunkLen := len(chunkRunes)
+			if currentChunkLen > maxFieldLength-ellipsisLen {
+				// 省略記号を追加するために末尾を削る (ルーン単位で)
 				chunk = string(chunkRunes[:maxFieldLength-ellipsisLen]) + ellipsis
-			} else {
+			} else if currentChunkLen <= maxFieldLength { // 削る必要がない場合でも省略記号を追加
 				chunk += ellipsis
 			}
+			// else のケース (currentChunkLen > maxFieldLength) は上の totalLength チェックで弾かれているはず
 			remainingText = "" // ループを終了させる
 		}
 
@@ -76,4 +81,3 @@ func splitToEmbedFields(text string) []*discordgo.MessageEmbedField {
 	return fields
 }
 
-// TODO: 他のコマンドハンドラで共通化できる Embed 作成ロジックがあれば、ここにヘルパー関数を追加していく！

@@ -249,7 +249,7 @@
 - **discord/embeds.go:**
   - 役割: Discord Embed作成に関するヘルパー関数を提供する。
   - 処理:
-    - `splitToEmbedFields`: LLMからの応答テキストを受け取り、Discord Embedフィールドの文字数制限(1024文字)に合わせて処理する。**1024文字を超える場合は、複数のフィールドに分割して表示する。** フィールド名は空にする。
+    - `splitToEmbedFields`: LLMからの応答テキストを受け取り、Discord Embedフィールドの文字数制限(1024文字)に合わせて処理する。**1024文字を超える場合は、文字化けしないようにルーン単位で分割し、複数のフィールドに分割して表示する。** フィールド名は空にする。
 
 - **discord/types.go:** (新規)
   - 役割: `discord` パッケージ内で共通して使用される型定義を行う。
@@ -264,13 +264,3 @@
 
 ## 今後の展望
 - 検索機能を持たせる。GeminiのグラウンディングAPI を使って，ユーザーからの質問を受け付けて、検索結果とGeminiまたはOllamaの応答を組み合わせて、ユーザーに回答する。
-
-## 変更履歴
-- 2025/04/02: `/chat`, `/about` コマンド実行時に `model.json` を読み込むように変更。
-- 2025/04/02: Gemini API 429 エラー時に `secondary_model_name` で再試行し、Ollama へフォールバックする機能を追加。`loader.ModelConfig` に `SecondaryModelName` フィールドを追加。
-- 2025/04/02: `discord/embeds.go` の `splitToEmbedFields` を修正し、1024文字を超える場合に複数のフィールドに分割して表示するように変更。
-- 2025/04/02: `chat/chat.go` に Ollama と Gemini の処理分岐を追加。`chat/ollama.go` の履歴追加処理を有効化。
-- 2025/04/02: `discord/embeds.go` の `splitToEmbedFields` を修正し、1024文字を超える場合に省略表示するように変更。Discordの文字数制限エラーに対応。
-- 2025/04/02: `discord/embeds.go` の `splitToEmbedFields` を修正し、Embedフィールド名を空にして非表示に変更。
-- 2025/04/01: `chat/chat.go` 内の冗長なデバッグログ出力をコメントアウトし、ログ量を削減。
-- 2025/04/01: コード中のコメントの表現を丁寧語から簡潔な記述に修正。
