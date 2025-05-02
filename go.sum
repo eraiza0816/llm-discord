@@ -14,8 +14,6 @@ github.com/bwmarrin/discordgo v0.28.1 h1:gXsuo2GBO7NbR6uqmrrBDplPUx2T3nzu775q/Rd
 github.com/bwmarrin/discordgo v0.28.1/go.mod h1:NJZpH+1AfhIcyQsPeuBKsUtYrRnjkyu0kIVMCHkZtRY=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
-github.com/eraiza0816/zu2l v0.0.0-20250330130041-831a8fe4b7b4 h1:q+pT4P5oAnrM6sQWHmUa5IxuzDSr2ZnMnxx0CSxHHHI=
-github.com/eraiza0816/zu2l v0.0.0-20250330130041-831a8fe4b7b4/go.mod h1:0ebvMhZC3lcRBJ8Ro5L49G0jEKfcDt09LkYbGjmFx/8=
 github.com/eraiza0816/zu2l v0.0.0-20250330130800-8935457bcbd0 h1:G+MOz8Bv9XhfjRqmWMbQM7Qau4kCqaeq/Kx/8QEND1g=
 github.com/eraiza0816/zu2l v0.0.0-20250330130800-8935457bcbd0/go.mod h1:0ebvMhZC3lcRBJ8Ro5L49G0jEKfcDt09LkYbGjmFx/8=
 github.com/felixge/httpsnoop v1.0.4 h1:NFTV2Zj1bL4mc9sqWACXbQFVBBg2W3GPvqp8/ESS2Wg=
