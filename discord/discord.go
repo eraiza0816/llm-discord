@@ -24,13 +24,6 @@ func StartBot(cfg *config.Config) error {
 		return err
 	}
 
-	// model.json の読み込みは setupHandlers に移動
-	// defaultPrompt も setupHandlers 内で modelCfg から取得される想定 (chat.NewChat の引数も変更が必要)
-
-	// chat.NewChat の呼び出しは setupHandlers に移動
-	// defer chatService.Close() も移動が必要だが、setupHandlers のスコープでは早すぎる。
-	// main 関数で Close するのが適切だが、今回はリファクタリング範囲外とする。
-
 	commands := []*discordgo.ApplicationCommand{
 		{
 			Name:        "chat",
