@@ -130,7 +130,7 @@ func parseOllamaStreamResponse(reader *bufio.Reader) (string, string, error) {
 
 		trimmedLine := strings.TrimSpace(string(line))
 		if trimmedLine == "" {
-			continue // 空行はスキップ
+			continue
 		}
 
 		var result map[string]interface{}

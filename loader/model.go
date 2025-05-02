@@ -9,7 +9,7 @@ import (
 type ModelConfig struct {
 	Name               string            `json:"name"`
 	ModelName          string            `json:"model_name"`
-	SecondaryModelName string            `json:"secondary_model_name,omitempty"` // 追加: フォールバック用モデル名 (omitemptyで空の場合はJSONに出力しない)
+	SecondaryModelName string            `json:"secondary_model_name,omitempty"`
 	Icon               string            `json:"icon"`
 	MaxHistorySize     int               `json:"max_history_size"`
 	Prompts            map[string]string `json:"prompts"`

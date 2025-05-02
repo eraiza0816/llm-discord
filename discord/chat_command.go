@@ -10,13 +10,10 @@ import (
 	"github.com/eraiza0816/llm-discord/loader" // loader を使うので残す
 )
 
-// modelCfg を引数から削除
 func chatCommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate, chatSvc chat.Service) {
-	// コマンド実行時に model.json を読み込む
 	modelCfg, err := loader.LoadModelConfig("json/model.json")
 	if err != nil {
 		log.Printf("Error loading model config: %v", err)
-		// エラー時はユーザーに通知し、処理を中断
 		sendEphemeralErrorResponse(s, i, fmt.Errorf("設定ファイルの読み込みに失敗しました: %w", err))
 		return
 	}
@@ -30,16 +27,12 @@ func chatCommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate, ch
 
 	customPrompt, exists, err := GetCustomPromptForUser(username)
 	if err != nil {
-		// エラーが発生したらログを出力し、デフォルトプロンプトを使用
 		log.Printf("カスタムプロンプトの取得中にエラーが発生しました: %v。デフォルトプロンプトを使用します。", err)
-		// ユーザーにエラーを通知せず、処理を続行
-		userPrompt = modelCfg.GetPromptByUser(username) // デフォルトを使用
+		userPrompt = modelCfg.GetPromptByUser(username)
 	} else if exists {
-		// カスタムプロンプトが存在すればそれを使用
 		log.Printf("ユーザー %s のカスタムプロンプトを使用します。", username)
 		userPrompt = customPrompt
 	} else {
-		// カスタムプロンプトが存在しなければデフォルトを使用
 		userPrompt = modelCfg.GetPromptByUser(username)
 	}
 
