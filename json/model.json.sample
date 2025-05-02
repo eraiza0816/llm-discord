@@ -1,6 +1,7 @@
 {
     "name": "Gemini-Bot",
     "model_name": "gemini-2.0-flash",
+    "secondary_model_name": "gemini-2.0-flash",
     "icon": "https://cdn.discordapp.com/avatars/.png",
     "max_history_size": 20,
 
@@ -18,5 +19,6 @@
         "enabled": false,
         "api_endpoint": "http://127.0.0.1:11434/api/generate",
         "model_name": "gemma3:12b-it-q8_0"
-    }
+    },
+    "other_model_name":"gemini-2.0-flash,gemini-2.5-pro-exp-03-25,gemini-2.0-pro-exp-02-05"
 }

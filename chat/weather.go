@@ -30,8 +30,6 @@ func NewWeatherService() WeatherService {
 	}
 }
 
-// --- Helper Functions ---
-
 // getLocationInfo は指定された場所の CityCode と Name を取得する
 func (ws *weatherServiceImpl) getLocationInfo(location string) (cityCode string, pointName string, err error) {
 	// GetWeatherPoint は GetWeatherPointResponse を返す
@@ -499,21 +497,17 @@ func (ws *weatherServiceImpl) handleGetOtenkiAspInfo(args map[string]interface{}
 								}
 							}
 						default:
-							// 天気コードが他の型で来る可能性も考慮 (例: int)
 							if columnName == "天気" {
-								// --- 天気コードを絵文字に変換 (ヘルパー関数使用) ---
 								valueStr = getWeatherEmoji(v)
-								// --- ここまで変換処理 ---
 							} else {
-								valueStr = fmt.Sprintf("%v", v) // その他の型はそのまま文字列化
+								valueStr = fmt.Sprintf("%v", v)
 							}
 						} // switch v := value.(type) の閉じ括弧
-					// if value != nil の閉じ括弧は削除
 				} else { // if indexOk && elemIndex < len(dateData) の else 節
 					log.Printf("Warning: Index for column %q (%d) is invalid or out of bounds for date %s", columnName, elemIndex, dateStr)
 				} // if indexOk && elemIndex < len(dateData) の閉じ括弧
 				row = append(row, valueStr)
-			} // for _, columnName := range columnOrder の閉じ括弧
+			}
 		}
 		sb.WriteString("| " + strings.Join(row, " | ") + " |\n")
 	}
