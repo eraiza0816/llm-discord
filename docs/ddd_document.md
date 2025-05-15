@@ -7,8 +7,8 @@
 
 ## 主要な機能
 
-- LLMとのチャット機能: ユーザーはテキストメッセージを送信し、GeminiまたはOllamaからの応答を受信できます。
-- チャット履歴のリセット機能: ユーザーは`/reset`コマンドを使用してチャット履歴をクリアできます。
+- LLMとのチャット機能: ユーザーはテキストメッセージを送信し、GeminiまたはOllamaからの応答を受信できます。スレッド内での会話の場合、スレッド単位で履歴が管理されます。
+- チャット履歴のリセット機能: ユーザーは`/reset`コマンドを使用して、コマンドを実行したスレッド（またはチャンネル）のチャット履歴をクリアできます。
 - BOTの説明表示機能: `/about`コマンドで、json/model.json に定義されたBOTの説明を表示します。
 - プロンプト編集機能: ユーザーは`/edit`コマンドを使用してプロンプトを編集できます。
   - `/edit`コマンドで"delete"と送信された場合、custom_model.json から該当ユーザーの行を削除します。
@@ -36,12 +36,12 @@
   - チャット: ユーザーとLLMとの対話の管理
   - コマンド処理: ユーザーからのコマンドの解析と実行
   - 設定管理: Botの設定の読み込みと管理 (`.env`, `model.json`, `custom_model.json`)
-  - 履歴管理: ユーザーごとのチャット履歴の永続化と取得 (新規)
+  - 履歴管理: Discordのスレッド（またはチャンネル）単位およびユーザー単位でのチャット履歴の永続化と取得 (SQLiteを使用)
 - 境界づけられたコンテキスト:
-  - Discord Bot: Discord APIとのインターフェース (`discord` パッケージ)
-  - LLMクライアント: LLM API (Gemini, Ollama) とのインターフェース (`chat` パッケージ)
+  - Discord Bot: Discord APIとのインターフェース (`discord` パッケージ)。スレッドIDの取得とハンドラへの引き渡しを含む。
+  - LLMクライアント: LLM API (Gemini, Ollama) とのインターフェース (`chat` パッケージ)。スレッドIDを考慮した履歴の取得と保存を行う。
   - 設定ローダー: 設定ファイルの読み込み (`loader`, `config` パッケージ)
-  - 履歴マネージャー: チャット履歴の管理 (`history` パッケージ)
+  - 履歴マネージャー: チャット履歴の管理 (`history` パッケージ)。SQLiteによる永続化、スレッドIDとユーザーIDに基づいた履歴操作。
 - 関係:
   - Discord BotはLLMクライアントを利用してチャット機能を提供します。
   - Discord Botはユーザーからのコマンドを受け付け、適切な処理を呼び出します。
@@ -125,12 +125,19 @@
     - `getWeatherEmoji` (ヘルパー関数): 天気コード（数値または文字列）を受け取り、`weatherEmojiMap` を参照して対応する絵文字を返す共通処理。
     - `weatherEmojiMap`: 天気コードに対応する絵文字を定義する。
 
-- HistoryManager (`history/history.go`)
-  - 役割: ユーザーごとのチャット履歴を管理する。
-  - メソッド:
-    - `Add(userID, message, response)`: 履歴を追加する。
-    - `Get(userID)`: 履歴を取得する。
-    - `Clear(userID)`: 履歴をクリアする。
+- HistoryManager (`history/history.go`, `history/sqlite_manager.go`)
+  - 役割: Discordのスレッド（またはチャンネル）単位およびユーザー単位でのチャット履歴を管理する。SQLiteデータベースを使用して履歴を永続化する。
+  - インターフェース (`history.HistoryManager`):
+    - `Add(userID, threadID, message, response)`: 指定されたユーザーとスレッドの履歴にメッセージと応答を追加する。
+    - `Get(userID, threadID)`: 指定されたユーザーとスレッドの履歴を取得する。
+    - `Clear(userID, threadID)`: 指定されたユーザーとスレッドの履歴をクリアする。
+    - `ClearAllByThreadID(threadID)`: 指定されたスレッドの全ユーザーの履歴をクリアする。
+    - `Close()`: データベース接続などのリソースを解放する。
+  - 実装 (`history.SQLiteHistoryManager`):
+    - SQLiteデータベースへの接続、テーブル作成、CRUD操作を実装。
+    - `thread_histories` テーブル (thread_id, user_id, history_json, last_updated_at) を使用。
+  - 実装 (`history.InMemoryHistoryManager`):
+    - 従来のユーザーID単位のメモリ上履歴管理。スレッドIDはダミー引数として受け取るが使用しない。テスト用などに利用。
 
 - 設定ローダー (config, loader)
   - 役割: 環境変数の読み込みと管理を行う。
@@ -160,13 +167,13 @@
   - 役割: `ChatService` の主要な実装。LLM (Gemini, Ollama) API との通信、Gemini の Function Calling のディスパッチ（`WeatherService` への委譲を含む）、応答生成のコアロジック、エラー時のフォールバック処理を担当。
   - 処理:
     - `NewChat`: サービスと依存関係 (`WeatherService` を含む) を初期化。`model.json` は初期モデル名取得のために一時的に読み込むが、設定は保持しない。
-    - `GetResponse`: コマンド実行ごとに `model.json` を読み込む。 ユーザーからのメッセージを受け取り、`model.json` の設定に基づいて使用するLLM (Ollama または Gemini) を決定する。Gemini API で 429 エラーが発生した場合、`secondary_model_name` で再試行し、必要に応じて Ollama にフォールバックする。 Gemini の場合は Function Calling を `WeatherService` に委譲し、Ollama の場合は `getOllamaResponse` を呼び出して応答を取得する。最終的な応答を生成する。
+    - `GetResponse(userID, threadID, username, message, timestamp, prompt)`: コマンド実行ごとに `model.json` を読み込む。ユーザーからのメッセージとスレッドIDを受け取り、`model.json` の設定に基づいて使用するLLMを決定。`historyMgr` を使用してスレッドIDに基づいた履歴を取得・保存する。Gemini API で 429 エラーが発生した場合のフォールバック処理などを行う。
     - `Close`: リソースを解放する。
 
 - chat/prompt.go:
   - 役割: LLM に送信するプロンプト（入力文字列）の構築ロジックを担当。
   - 処理:
-    - `buildFullInput`: システムプロンプト、ツール指示、会話履歴、ユーザーメッセージを結合する。
+    - `buildFullInput(systemPrompt, userMessage, historyMgr, userID, threadID)`: システムプロンプト、ツール指示、会話履歴（スレッドIDとユーザーIDで取得）、ユーザーメッセージを結合する。
 
 - chat/weather.go: (新規)
   - 役割: `WeatherService` の実装。天気関連の Function Calling 処理と `zu2l` API との連携を担当。
@@ -186,19 +193,26 @@
 - chat/ollama.go:
   - 役割: Ollama LLM との連携に関するロジックを担当。
   - 処理:
-    - `getOllamaResponse`: 引数で受け取った `OllamaConfig` を使用して Ollama API にリクエストを送信し、応答を取得して履歴に追加する。
+    - `getOllamaResponse(userID, threadID, message, fullInput, ollamaCfg)`: 引数で受け取った `OllamaConfig` を使用して Ollama API にリクエストを送信し、応答を取得してスレッドIDとユーザーIDに基づいて履歴に追加する。
     - `parseOllamaStreamResponse`: Ollama からのストリーミング応答を解析する。
 
 - history/history.go:
-  - 役割: チャット履歴の管理ロジックを提供する。
+  - 役割: チャット履歴管理のインターフェース (`HistoryManager`) とインメモリ実装 (`InMemoryHistoryManager`) を提供する。
   - 処理:
-    - `HistoryManager` インターフェースを定義。
-    - `InMemoryHistoryManager` 構造体と、そのメソッド (`Add`, `Get`, `Clear`) を実装。メモリ上で履歴を保持し、最大サイズを超えたら古いものから削除する。Mutexによる排他制御を行う。
+    - `HistoryManager` インターフェース: `Add`, `Get`, `Clear`, `ClearAllByThreadID`, `Close` メソッドを定義。スレッドIDを引数に取る。
+    - `InMemoryHistoryManager`: 従来のユーザーID単位のメモリ上履歴管理。スレッドIDはダミー引数として受け取る。`Close` は何もしない。
+
+- history/sqlite_manager.go: (新規)
+  - 役割: `HistoryManager` インターフェースのSQLite実装 (`SQLiteHistoryManager`) を提供する。
+  - 処理:
+    - `NewSQLiteHistoryManager`: SQLiteデータベースへの接続とテーブル (`thread_histories`) の初期化を行う。
+    - `Add`, `Get`, `Clear`, `ClearAllByThreadID`: スレッドIDとユーザーIDに基づいてSQLiteデータベース内の履歴を操作する。履歴はJSON形式で保存。
+    - `Close`: SQLiteデータベース接続を閉じる。
 
 - discord/discord.go:
-  - 役割: Discord APIとのインターフェースを提供し、Botの起動、コマンド登録を行う。
+  - 役割: Discord APIとのインターフェースを提供し、Botの起動、コマンド登録、リソース管理を行う。
   - 処理:
-    - `StartBot(cfg)`: Discord Botを起動し、`setupHandlers` を呼び出してハンドラとサービスを初期化する。`model.json` の読み込みや `ChatService` の初期化は `setupHandlers` に移譲。
+    - `StartBot(cfg)`: Discord Botを起動し、`setupHandlers` を呼び出してハンドラとサービスを初期化する。`setupHandlers` から返された `HistoryManager` (実体は `SQLiteHistoryManager`) の `Close` メソッドを `defer` で呼び出すようにする。
 
 - loader/model.go:
   - 役割: `model.json` の読み込み処理と構造体定義を行う。
@@ -221,19 +235,19 @@
 - discord/handler.go:
   - 役割: Discordのイベントハンドリングとコマンドディスパッチ、サービスの初期化を行う。
   - 処理:
-    - `setupHandlers(s, geminiAPIKey)`: Bot起動時に呼び出され、ログ設定、`HistoryManager` と `ChatService` の初期化、コマンドハンドラの登録を行う。`model.json` の読み込みはここで行わない。 エラー発生時は `log.Fatalf` せずにエラーを返す。
-    - `interactionCreate` ハンドラ: 受け取ったインタラクションがアプリケーションコマンドの場合、コマンド名に応じて各コマンドハンドラ関数を呼び出す。`modelCfg` は渡さない。
+    - `setupHandlers(s, geminiAPIKey)`: Bot起動時に呼び出され、ログ設定、`SQLiteHistoryManager` と `ChatService` の初期化、コマンドハンドラの登録を行う。初期化された `HistoryManager` を返す。
+    - `interactionCreate` ハンドラ: 受け取ったインタラクションからスレッドID（スレッドでない場合はチャンネルID）を取得し、各コマンドハンドラに渡す。
     - `onReady`: Bot準備完了時のログ出力。
 
 - discord/chat_command.go:
   - 役割: `/chat` コマンドの処理を行う。
   - 処理:
-    - `chatCommandHandler(s, i, chatSvc)`: コマンド実行時に `model.json` を読み込む。 `discord/custom_prompt.go` の `GetCustomPromptForUser` でカスタムプロンプトを取得し、`chatSvc.GetResponse` を呼び出してLLMからの応答を取得し、結果をEmbedで表示する。エラーハンドリングは `sendErrorResponse` を使用。
+    - `chatCommandHandler(s, i, chatSvc, threadID)`: コマンド実行時に `model.json` を読み込む。カスタムプロンプトを取得し、受け取った `threadID` と共に `chatSvc.GetResponse` を呼び出してLLMからの応答を取得し、結果をEmbedで表示する。
 
 - discord/reset_command.go:
   - 役割: `/reset` コマンドの処理を行う。
   - 処理:
-    - `resetCommandHandler(s, i, historyMgr)`: 引数で受け取った `HistoryManager` の `Clear` メソッドを呼び出して履歴を削除し、結果をEmbedで表示する。
+    - `resetCommandHandler(s, i, historyMgr, threadID)`: 受け取った `threadID` を使用して `historyMgr.ClearAllByThreadID` を呼び出し、該当スレッド（またはチャンネル）の全ユーザーの履歴を削除し、結果をEmbedで表示する。
 
 - discord/about_command.go:
   - 役割: `/about` コマンドの処理を行う。

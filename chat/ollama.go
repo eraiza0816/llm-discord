@@ -13,7 +13,7 @@ import (
 	"github.com/eraiza0816/llm-discord/loader"
 )
 
-func (c *Chat) getOllamaResponse(userID, message, fullInput string, ollamaCfg loader.OllamaConfig) (string, float64, error) {
+func (c *Chat) getOllamaResponse(userID, threadID, message, fullInput string, ollamaCfg loader.OllamaConfig) (string, float64, error) {
 
 	start := time.Now()
 	url := ollamaCfg.APIEndpoint
@@ -75,10 +75,10 @@ func (c *Chat) getOllamaResponse(userID, message, fullInput string, ollamaCfg lo
 	log.Printf("Ollama full response text: %s", responseText)
 
 	if responseText != "" {
-		c.historyMgr.Add(userID, message, responseText)
-		log.Printf("Added Ollama response to history for user %s", userID)
+		c.historyMgr.Add(userID, threadID, message, responseText)
+		log.Printf("Added Ollama response to history for user %s in thread %s", userID, threadID)
 	} else {
-		log.Printf("Skipping history add for user %s because Ollama responseText is empty.", userID)
+		log.Printf("Skipping history add for user %s in thread %s because Ollama responseText is empty.", userID, threadID)
 	}
 
 	return responseText, elapsed, nil

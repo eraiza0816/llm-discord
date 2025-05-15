@@ -19,7 +19,7 @@ import (
 var errorLogger *log.Logger
 
 type Service interface {
-	GetResponse(userID, username, message, timestamp, prompt string) (string, float64, string, error)
+	GetResponse(userID, threadID, username, message, timestamp, prompt string) (string, float64, string, error)
 	Close()
 }
 
@@ -75,20 +75,22 @@ func NewChat(token string, historyMgr history.HistoryManager) (Service, error) {
 	}, nil
 }
 
-func (c *Chat) GetResponse(userID, username, message, timestamp, prompt string) (string, float64, string, error) {
+func (c *Chat) GetResponse(userID, threadID, username, message, timestamp, prompt string) (string, float64, string, error) {
 	modelCfg, err := loader.LoadModelConfig("json/model.json")
 	if err != nil {
 		errorLogger.Printf("Error loading model config in GetResponse: %v", err)
 		return "", 0, "", fmt.Errorf("設定ファイルの読み込みに失敗しました: %w", err)
 	}
 
-	fullInput := buildFullInput(prompt, message, c.historyMgr, userID)
+	// buildFullInput に threadID を渡すように変更 (prompt.go の修正も必要)
+	fullInput := buildFullInput(prompt, message, c.historyMgr, userID, threadID)
 
 	if modelCfg.Ollama.Enabled {
-		log.Printf("Using Ollama (%s) for user %s", modelCfg.Ollama.ModelName, userID)
-		responseText, elapsed, err := c.getOllamaResponse(userID, message, fullInput, modelCfg.Ollama)
+		log.Printf("Using Ollama (%s) for user %s in thread %s", modelCfg.Ollama.ModelName, userID, threadID)
+		// getOllamaResponse に threadID を渡すように変更 (ollama.go の修正も必要)
+		responseText, elapsed, err := c.getOllamaResponse(userID, threadID, message, fullInput, modelCfg.Ollama)
 		if err != nil {
-			errorLogger.Printf("Ollama API call failed for user %s: %v", userID, err)
+			errorLogger.Printf("Ollama API call failed for user %s in thread %s: %v", userID, threadID, err)
 			return "", elapsed, modelCfg.Ollama.ModelName, fmt.Errorf("Ollama APIからのエラー: %w", err)
 		}
 		return responseText, elapsed, modelCfg.Ollama.ModelName, nil
@@ -129,13 +131,14 @@ func (c *Chat) GetResponse(userID, username, message, timestamp, prompt string) 
 			}
 
 			if modelCfg.Ollama.Enabled {
-				log.Printf("Falling back to Ollama (%s)", modelCfg.Ollama.ModelName)
-				responseText, ollamaElapsed, ollamaErr := c.getOllamaResponse(userID, message, fullInput, modelCfg.Ollama)
+				log.Printf("Falling back to Ollama (%s) for user %s in thread %s", modelCfg.Ollama.ModelName, userID, threadID)
+				// getOllamaResponse に threadID を渡すように変更 (ollama.go の修正も必要)
+				responseText, ollamaElapsed, ollamaErr := c.getOllamaResponse(userID, threadID, message, fullInput, modelCfg.Ollama)
 				if ollamaErr != nil {
-					errorLogger.Printf("Ollama fallback failed for user %s: %v", userID, ollamaErr)
+					errorLogger.Printf("Ollama fallback failed for user %s in thread %s: %v", userID, threadID, ollamaErr)
 					return "", elapsed, modelCfg.ModelName, fmt.Errorf("Gemini APIクォータ超過後、Ollamaフォールバックも失敗: (Gemini: %w), (Ollama: %v)", err, ollamaErr)
 				}
-				log.Printf("Successfully generated content with Ollama fallback: %s", modelCfg.Ollama.ModelName)
+				log.Printf("Successfully generated content with Ollama fallback: %s for user %s in thread %s", modelCfg.Ollama.ModelName, userID, threadID)
 				return responseText, ollamaElapsed, modelCfg.Ollama.ModelName, nil
 			} else {
 				log.Println("Ollama is not enabled, cannot fallback.")
@@ -187,9 +190,9 @@ HandleResponse:
 				finalResponse += toolResult
 
 				if finalResponse != "" {
-					c.historyMgr.Add(userID, message, finalResponse)
+					c.historyMgr.Add(userID, threadID, message, finalResponse)
 				} else {
-					errorLogger.Printf("Skipping history add for user %s because combined response is empty.", userID)
+					errorLogger.Printf("Skipping history add for user %s in thread %s because combined response is empty.", userID, threadID)
 				}
 				return finalResponse, 0, "zutool", nil
 			}
@@ -200,9 +203,9 @@ HandleResponse:
 			}
 
 			if responseText != "" {
-				c.historyMgr.Add(userID, message, responseText)
+				c.historyMgr.Add(userID, threadID, message, responseText)
 		} else {
-			errorLogger.Printf("Skipping history add for user %s because responseText is empty.", userID)
+			errorLogger.Printf("Skipping history add for user %s in thread %s because responseText is empty.", userID, threadID)
 		}
 		return responseText, elapsed, modelCfg.ModelName, nil
 

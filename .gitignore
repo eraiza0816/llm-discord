@@ -4,3 +4,4 @@ log/*.log
 json/model.json
 json/custom_model.json
 llm-discord
+data/*.db

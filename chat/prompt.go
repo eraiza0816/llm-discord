@@ -6,7 +6,7 @@ import (
 	"github.com/eraiza0816/llm-discord/history"
 )
 
-func buildFullInput(systemPrompt, userMessage string, historyMgr history.HistoryManager, userID string) string {
+func buildFullInput(systemPrompt, userMessage string, historyMgr history.HistoryManager, userID string, threadID string) string {
 	toolInstructions := `
 【Function Calling Rules】
 あなたは以下のツール（関数）を利用できます。ユーザーのリクエストに応じて適切な関数を選択し、FunctionCallを返してください。
@@ -15,7 +15,7 @@ func buildFullInput(systemPrompt, userMessage string, historyMgr history.History
 - searchWeatherPoint: 「地点コード」を知りたい、または地名を検索したい場合に使います。キーワード（地名など）が必要です。
 - getOtenkiAspInfo: 「Otenki ASP」の情報について、地点コード（例：「13112」）で質問された場合に使います。地名では使いません。
 `
-	userHistory := historyMgr.Get(userID)
+	userHistory := historyMgr.Get(userID, threadID)
 	historyText := ""
 	if userHistory != "" {
 		historyText = "会話履歴:\n" + userHistory + "\n\n"
