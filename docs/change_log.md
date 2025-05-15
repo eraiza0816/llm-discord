@@ -1,4 +1,9 @@
 ## 変更履歴
+- 2025/05/16: URLの内容を読み取り要約する機能をFunction Callingとして実装。
+    - `chat/url_reader_service.go` を新規作成し、URL取得・パース処理を実装。
+    - `chat/chat.go` に `URLReaderService` を組み込み、`get_url_content` 関数をツールとして登録。Function Calling時の処理ロジックを修正。
+    - `chat/prompt.go` の `toolInstructions` に `get_url_content` 関数の説明を追加。
+    - 不要になった `/url-reader` スラッシュコマンド関連のコード (`discord/url_reader_command.go`, `discord/discord.go` および `discord/handler.go` の一部) を削除。
 - 2025/05/16: DuckDBの履歴管理機能を変更。履歴追加時に古いデータを削除せず全て保存し、履歴取得時に最新20ペアを返すように変更。
     - `history/duckdb_manager.go` の `Add` メソッドと `Get` メソッドを修正。
 - 2025/05/15: 不要になったSQLite関連のコードとドキュメントを削除。

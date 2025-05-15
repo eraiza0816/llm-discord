@@ -12,14 +12,14 @@ import (
 	"github.com/eraiza0816/llm-discord/history"
 )
 
-func setupHandlers(s *discordgo.Session, geminiAPIKey string) (history.HistoryManager, error) {
+func setupHandlers(s *discordgo.Session, geminiAPIKey string) (history.HistoryManager, chat.Service, error) {
 	const defaultMaxHistorySize = 20
 	const dbPath = "data"
 
 	historyMgr, err := history.NewDuckDBHistoryManager()
 	if err != nil {
 		log.Printf("DuckDBHistoryManager の初期化に失敗しました: %v", err)
-		return nil, fmt.Errorf("DuckDBHistoryManager の初期化に失敗しました: %w", err)
+		return nil, nil, fmt.Errorf("DuckDBHistoryManager の初期化に失敗しました: %w", err)
 	}
 
 	chatSvc, err := chat.NewChat(geminiAPIKey, historyMgr)
@@ -29,10 +29,10 @@ func setupHandlers(s *discordgo.Session, geminiAPIKey string) (history.HistoryMa
 		} else {
 			log.Printf("Chat サービスの初期化に失敗しました: %v", err)
 		}
-		return nil, fmt.Errorf("Chat サービスの初期化に失敗しました: %w", err)
+		return nil, nil, fmt.Errorf("Chat サービスの初期化に失敗しました: %w", err)
 	}
 
-	errorLogger := chat.GetErrorLogger()
+	errorLogger := chat.GetErrorLogger() // chat.GetErrorLogger() は chat.Service に関連付けられていないグローバルなものかもしれない
 	SetErrorLogger(errorLogger)
 
 	err = os.MkdirAll("log", 0755)
@@ -40,7 +40,7 @@ func setupHandlers(s *discordgo.Session, geminiAPIKey string) (history.HistoryMa
 		if errorLogger != nil {
 			errorLogger.Printf("log ディレクトリの作成に失敗しました: %v", err)
 		}
-		return nil, fmt.Errorf("log ディレクトリの作成に失敗しました: %w", err)
+		return nil, nil, fmt.Errorf("log ディレクトリの作成に失敗しました: %w", err)
 	}
 
 	logFile, err := os.OpenFile("log/app.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
@@ -48,7 +48,7 @@ func setupHandlers(s *discordgo.Session, geminiAPIKey string) (history.HistoryMa
 		if errorLogger != nil {
 			errorLogger.Printf("ログファイル 'log/app.log' のオープンに失敗しました: %v", err)
 		}
-		return nil, fmt.Errorf("ログファイル 'log/app.log' のオープンに失敗しました: %w", err)
+		return nil, nil, fmt.Errorf("ログファイル 'log/app.log' のオープンに失敗しました: %w", err)
 	}
 	log.SetOutput(logFile)
 
@@ -105,10 +105,10 @@ func setupHandlers(s *discordgo.Session, geminiAPIKey string) (history.HistoryMa
 		case "about":
 			aboutCommandHandler(s, i)
 		case "edit":
-			editCommandHandler(s, i, chatSvc)
+			editCommandHandler(s, i, chatSvc) // chatSvc は chat.Service 型
 		}
 	})
-	return historyMgr, nil
+	return historyMgr, chatSvc, nil
 }
 
 func onReady(s *discordgo.Session, event *discordgo.Ready) {

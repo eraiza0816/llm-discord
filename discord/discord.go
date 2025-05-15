@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/eraiza0816/llm-discord/chat" // chat パッケージをインポート
 	"github.com/eraiza0816/llm-discord/config"
 	"github.com/eraiza0816/llm-discord/history"
 )
@@ -100,9 +101,10 @@ func StartBot(cfg *config.Config) error {
 	// log.Printf("Registered commands: %v", registeredCommands)
 
 
-	// setupHandlers から history.HistoryManager を受け取る
+	// setupHandlers から history.HistoryManager と chat.Service を受け取る
 	var historyMgr history.HistoryManager
-	historyMgr, err = setupHandlers(session, cfg.GeminiAPIKey)
+	var chatSvc chat.Service // chat.Service 型の変数を宣言
+	historyMgr, chatSvc, err = setupHandlers(session, cfg.GeminiAPIKey) // chatSvc も受け取る
 	if err != nil {
 		log.Printf("Error in setupHandlers: %v", err)
 		return fmt.Errorf("ハンドラの設定中にエラーが発生しました: %w", err)
@@ -115,6 +117,14 @@ func StartBot(cfg *config.Config) error {
 			if closeErr := historyMgr.Close(); closeErr != nil {
 				log.Printf("Error closing HistoryManager in StartBot defer: %v", closeErr)
 			}
+		}()
+	}
+
+	// ChatService のクローズ処理
+	if chatSvc != nil {
+		defer func() {
+			log.Println("Closing ChatService via defer in StartBot...")
+			chatSvc.Close() // Closeメソッドを呼び出す
 		}()
 	}
 

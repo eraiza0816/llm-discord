@@ -17,6 +17,7 @@ func buildFullInput(systemPrompt, userMessage string, historyMgr history.History
 - getPainStatus: 「頭痛」や「ずつう」について、地名（例：「横浜」）で質問された場合に使います。地点コードでは使いません。
 - searchWeatherPoint: 「地点コード」を知りたい、または地名を検索したい場合に使います。キーワード（地名など）が必要です。
 - getOtenkiAspInfo: 「Otenki ASP」の情報について、地点コード（例：「13112」）で質問された場合に使います。地名では使いません。
+- get_url_content: 指定されたURLの主要なテキストコンテンツを取得します。ユーザーがURLについて言及したり、ウェブページの内容を知りたい場合に利用します。
 `
 	historyText := ""
 	if historyMgr != nil {
