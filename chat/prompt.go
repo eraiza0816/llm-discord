@@ -4,9 +4,11 @@ import (
 	"strings"
 
 	"github.com/eraiza0816/llm-discord/history"
+	"fmt"
 )
 
-func buildFullInput(systemPrompt, userMessage string, historyMgr history.HistoryManager, userID string, threadID string) string {
+func buildFullInput(systemPrompt, userMessage string, historyMgr history.HistoryManager, userID string, threadID string, timestamp string) string {
+	dateTimeInfo := fmt.Sprintf("Now is %s \n", timestamp)
 	toolInstructions := `
 【Function Calling Rules】
 あなたは以下のツール（関数）を利用できます。ユーザーのリクエストに応じて適切な関数を選択し、FunctionCallを返してください。
@@ -23,6 +25,7 @@ func buildFullInput(systemPrompt, userMessage string, historyMgr history.History
 
 	var sb strings.Builder
 	sb.WriteString(systemPrompt)
+	sb.WriteString(dateTimeInfo)
 	sb.WriteString(toolInstructions)
 	sb.WriteString("\n\n") // ツール指示と履歴の間の空行
 	sb.WriteString(historyText) // 履歴がない場合は空文字列が追加される

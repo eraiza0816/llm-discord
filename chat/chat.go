@@ -82,8 +82,8 @@ func (c *Chat) GetResponse(userID, threadID, username, message, timestamp, promp
 		return "", 0, "", fmt.Errorf("設定ファイルの読み込みに失敗しました: %w", err)
 	}
 
-	// buildFullInput に threadID を渡すように変更 (prompt.go の修正も必要)
-	fullInput := buildFullInput(prompt, message, c.historyMgr, userID, threadID)
+	// buildFullInput に threadID と timestamp を渡すように変更 (prompt.go の修正も必要)
+	fullInput := buildFullInput(prompt, message, c.historyMgr, userID, threadID, timestamp)
 
 	if modelCfg.Ollama.Enabled {
 		log.Printf("Using Ollama (%s) for user %s in thread %s", modelCfg.Ollama.ModelName, userID, threadID)

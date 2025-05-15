@@ -4,14 +4,13 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	// "io" // 不要になったので削除
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/eraiza0816/llm-discord/config"
-	"github.com/eraiza0816/llm-discord/history" // 再度追加
+	"github.com/eraiza0816/llm-discord/history"
 )
 
 func StartBot(cfg *config.Config) error {
@@ -23,8 +22,15 @@ func StartBot(cfg *config.Config) error {
 
 	session, err := discordgo.New("Bot " + cfg.DiscordBotToken)
 	if err != nil {
+		log.Printf("Error creating Discord session: %v", err)
 		return err
 	}
+	defer func() {
+		log.Println("Closing Discord session at the end of StartBot...")
+		if err := session.Close(); err != nil {
+			log.Printf("Error closing Discord session: %v", err)
+		}
+	}()
 
 	commands := []*discordgo.ApplicationCommand{
 		{
@@ -63,67 +69,74 @@ func StartBot(cfg *config.Config) error {
 
 	session.Identify.Intents = discordgo.IntentsGuildMessages | discordgo.IntentsDirectMessages | discordgo.IntentsMessageContent | discordgo.IntentsGuilds
 
-	registeredCommands := make([]*discordgo.ApplicationCommand, len(commands))
-
 	err = session.Open()
 	if err != nil {
-		log.Println("Error opening Discord session: ", err)
+		log.Printf("Error opening Discord session: %v", err)
 		return err
 	}
-	defer session.Close()
 
-	log.Printf("session.State: %v", session.State)
-	log.Printf("session.State.User: %v", session.State.User)
-	if session.State == nil || session.State.User == nil {
-		log.Println("session.State or session.State.User is nil")
-		return errors.New("session.State or session.State.User is nil")
+	log.Printf("session.State after open: %v", session.State)
+	if session.State == nil {
+		log.Println("session.State is nil after open")
+		return errors.New("session.State is nil after open")
 	}
-	if session.State != nil && session.State.User != nil {
-		for i, v := range commands {
-			cmd, err := session.ApplicationCommandCreate(session.State.User.ID, "", v)
-			if err != nil {
-				log.Printf("Can not create '%v' command: %v", v.Name, err)
-				continue
-			}
-			registeredCommands[i] = cmd
-		}
-		for _, v := range registeredCommands {
-			if v != nil {
-				log.Printf("Successfully created '%v' command.", v.Name)
-			} else {
-				log.Printf("Failed to register one of the commands (was nil)")
-			}
-		}
-		log.Printf("Registered commands: %v", registeredCommands)
-	} else {
-		log.Println("session.State or session.State.User is nil, skipping command registration")
+	log.Printf("session.State.User after open: %v", session.State.User)
+	if session.State.User == nil {
+		log.Println("session.State.User is nil after open")
+		return errors.New("session.State.User is nil after open")
 	}
+
+	// コマンド登録
+	registeredCommands := make([]*discordgo.ApplicationCommand, len(commands))
+	log.Println("Registering commands...")
+	for i, v := range commands {
+		cmd, err := session.ApplicationCommandCreate(session.State.User.ID, "", v)
+		if err != nil {
+			log.Printf("Can not create '%v' command for UserID %s: %v", v.Name, session.State.User.ID, err)
+			// エラーが発生しても他のコマンド登録を試みる (continue)
+			// あるいは、ここでエラーを返して起動失敗とする選択肢もある
+			// return fmt.Errorf("failed to create command %s: %w", v.Name, err)
+			continue
+		}
+		registeredCommands[i] = cmd
+		log.Printf("Successfully created '%v' command.", cmd.Name)
+	}
+	log.Printf("Registered commands: %v", registeredCommands)
+
 
 	// setupHandlers から history.HistoryManager を受け取る
-	var historyMgr history.HistoryManager // 型を明示的に宣言
+	var historyMgr history.HistoryManager
 	historyMgr, err = setupHandlers(session, cfg.GeminiAPIKey)
 	if err != nil {
+		log.Printf("Error in setupHandlers: %v", err)
 		return fmt.Errorf("ハンドラの設定中にエラーが発生しました: %w", err)
 	}
-	// クローズ処理を defer で呼び出す
+
+	// HistoryManager のクローズ処理
 	if historyMgr != nil {
 		defer func() {
-			log.Println("Closing HistoryManager...")
-			if err := historyMgr.Close(); err != nil {
-				log.Printf("Error closing HistoryManager: %v", err)
+			log.Println("Closing HistoryManager via defer in StartBot...")
+			if closeErr := historyMgr.Close(); closeErr != nil {
+				log.Printf("Error closing HistoryManager in StartBot defer: %v", closeErr)
 			}
 		}()
 	}
 
 	session.AddHandler(func(s *discordgo.Session, r *discordgo.Ready) {
-		log.Println("session.AddHandler called")
-		fmt.Printf("Bot is ready! %s#%s\n", r.User.Username, r.User.Discriminator)
+		log.Println("Discord Ready event received.")
+		if r.User != nil {
+			log.Printf("Bot is ready! Logged in as %s#%s", r.User.Username, r.User.Discriminator)
+		} else {
+			log.Println("Bot is ready, but r.User is nil.")
+		}
 	})
 
-	log.Println("Bot is running.")
+	log.Println("Bot setup complete. Waiting for signals...")
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
-	<-sc
+	receivedSignal := <-sc
+	log.Printf("Received signal: %v. Shutting down.", receivedSignal)
 
+	// session.Close() はこの関数の冒頭で defer されているため、ここでは不要
 	return nil
 }

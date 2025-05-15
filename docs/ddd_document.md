@@ -87,9 +87,9 @@
   - 役割: LLM (Gemini, Ollama) とのやり取り、および Gemini の Function Calling 機能のディスパッチを担当する。天気関連の Function Calling 処理は `WeatherService` に委譲する。
   - 処理:
     - `NewChat(token, historyMgr)` (`chat/chat.go`): Geminiクライアント、`HistoryManager`、`WeatherService` を初期化する。初期の Gemini モデル名は `model.json` から読み込むが、設定自体は保持しない。`WeatherService` から取得した Function Declaration を含む `Tool` を定義し、初期 Gemini モデルに設定する。
-    - `GetResponse(userID, username, message, timestamp, prompt)` (`chat/chat.go`):
+    - `GetResponse(userID, threadID, username, message, timestamp, prompt)` (`chat/chat.go`):
       1. `model.json` を読み込む。
-      2. `buildFullInput` (`chat/prompt.go`) を呼び出して、プロンプト、ツール指示、履歴、ユーザーメッセージを結合した入力文字列を生成する。
+      2. `buildFullInput` (`chat/prompt.go`) を呼び出して、プロンプト、現在日時情報、ツール指示、履歴、ユーザーメッセージを結合した入力文字列を生成する。
       3. `model.json` の `ollama.enabled` が `true` の場合、`getOllamaResponse` を呼び出して Ollama にリクエストを送信する。
       4. `ollama.enabled` が `false` の場合、`model.json` の `model_name` を使用して Gemini にリクエストを送信する (`genaiModel.GenerateContent`)。
       5. Gemini API から 429 (Quota Exceeded) エラーが返された場合:
@@ -167,13 +167,13 @@
   - 役割: `ChatService` の主要な実装。LLM (Gemini, Ollama) API との通信、Gemini の Function Calling のディスパッチ（`WeatherService` への委譲を含む）、応答生成のコアロジック、エラー時のフォールバック処理を担当。
   - 処理:
     - `NewChat`: サービスと依存関係 (`WeatherService` を含む) を初期化。`model.json` は初期モデル名取得のために一時的に読み込むが、設定は保持しない。
-    - `GetResponse(userID, threadID, username, message, timestamp, prompt)`: コマンド実行ごとに `model.json` を読み込む。ユーザーからのメッセージとスレッドIDを受け取り、`model.json` の設定に基づいて使用するLLMを決定。`historyMgr` を使用してスレッドIDに基づいた履歴を取得・保存する。Gemini API で 429 エラーが発生した場合のフォールバック処理などを行う。
+    - `GetResponse(userID, threadID, username, message, timestamp, prompt)`: コマンド実行ごとに `model.json` を読み込む。ユーザーからのメッセージ、スレッドID、タイムスタンプを受け取り、`model.json` の設定に基づいて使用するLLMを決定。`historyMgr` を使用してスレッドIDに基づいた履歴を取得・保存する。Gemini API で 429 エラーが発生した場合のフォールバック処理などを行う。
     - `Close`: リソースを解放する。
 
 - chat/prompt.go:
   - 役割: LLM に送信するプロンプト（入力文字列）の構築ロジックを担当。
   - 処理:
-    - `buildFullInput(systemPrompt, userMessage, historyMgr, userID, threadID)`: システムプロンプト、ツール指示、会話履歴（スレッドIDとユーザーIDで取得）、ユーザーメッセージを結合する。
+    - `buildFullInput(systemPrompt, userMessage, historyMgr, userID, threadID, timestamp)`: システムプロンプト、現在日時情報、ツール指示、会話履歴（スレッドIDとユーザーIDで取得）、ユーザーメッセージを結合する。
 
 - chat/weather.go: (新規)
   - 役割: `WeatherService` の実装。天気関連の Function Calling 処理と `zu2l` API との連携を担当。
@@ -212,7 +212,7 @@
 - discord/discord.go:
   - 役割: Discord APIとのインターフェースを提供し、Botの起動、コマンド登録、リソース管理を行う。
   - 処理:
-    - `StartBot(cfg)`: Discord Botを起動し、`setupHandlers` を呼び出してハンドラとサービスを初期化する。`setupHandlers` から返された `HistoryManager` (実体は `SQLiteHistoryManager`) の `Close` メソッドを `defer` で呼び出すようにする。
+    - `StartBot(cfg)`: Discord Botを起動し、`setupHandlers` を呼び出してハンドラとサービスを初期化する。起動シーケンス中の各ステップ（セッション作成、セッションオープン、コマンド登録、ハンドラ設定など）でエラーハンドリングを強化し、詳細なログを出力するように修正。`HistoryManager` および Discord セッション (`session`) の `Close` メソッドが、関数の正常終了時および異常終了時に `defer` を用いて確実に呼び出されるように修正し、リソースリークを防ぐ。
 
 - loader/model.go:
   - 役割: `model.json` の読み込み処理と構造体定義を行う。
