@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"time"
 
@@ -14,6 +15,8 @@ import (
 	"google.golang.org/api/googleapi" // googleapi エラーを判定するためにインポート
 	"google.golang.org/api/option"
 )
+
+var errorLogger *log.Logger
 
 type Service interface {
 	GetResponse(userID, username, message, timestamp, prompt string) (string, float64, string, error)
@@ -33,10 +36,21 @@ type Chat struct {
 
 // model, defaultPrompt, modelCfg を引数から削除
 func NewChat(token string, historyMgr history.HistoryManager) (Service, error) {
+	// エラーログファイルを開く
+	errorLogFile, err := os.OpenFile("log/error.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
+	if err != nil {
+		// エラーログファイルが開けない場合は標準エラー出力にログを出す
+		log.Printf("Failed to open error log file: %v", err)
+		errorLogger = log.New(os.Stderr, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
+	} else {
+		errorLogger = log.New(errorLogFile, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
+	}
+
 	// NewChat 時点で model.json を一時的に読み込み、初期 Gemini モデル名を取得
 	initialModelCfg, err := loader.LoadModelConfig("json/model.json")
 	if err != nil {
 		// 起動時に設定ファイルが読めないのは致命的なのでエラーにする
+		errorLogger.Printf("初期 model.json の読み込みに失敗しました: %v", err) // エラーロガーを使用
 		return nil, fmt.Errorf("初期 model.json の読み込みに失敗しました: %w", err)
 	}
 	// Ollama が有効な場合でも、Gemini クライアントとモデルの初期化は行っておく
@@ -82,7 +96,7 @@ func (c *Chat) GetResponse(userID, username, message, timestamp, prompt string) 
 	modelCfg, err := loader.LoadModelConfig("json/model.json")
 	if err != nil {
 		// エラー時はデフォルトのモデル名（空文字）を返し、エラーをラップする
-		log.Printf("Error loading model config in GetResponse: %v", err)
+		errorLogger.Printf("Error loading model config in GetResponse: %v", err) // エラーロガーを使用
 		return "", 0, "", fmt.Errorf("設定ファイルの読み込みに失敗しました: %w", err)
 	}
 
@@ -97,6 +111,7 @@ func (c *Chat) GetResponse(userID, username, message, timestamp, prompt string) 
 		responseText, elapsed, err := c.getOllamaResponse(userID, message, fullInput, modelCfg.Ollama) // modelCfg.Ollama を渡す
 		if err != nil {
 			// エラー時は Ollama のモデル名を返す (読み込んだ modelCfg から)
+			errorLogger.Printf("Ollama API call failed for user %s: %v", userID, err) // エラーロガーを使用
 			return "", elapsed, modelCfg.Ollama.ModelName, fmt.Errorf("Ollama APIからのエラー: %w", err)
 		}
 		// 成功時は Ollama のモデル名を返す (読み込んだ modelCfg から)
@@ -120,15 +135,15 @@ func (c *Chat) GetResponse(userID, username, message, timestamp, prompt string) 
 
 	// --- エラーハンドリング開始 ---
 	if err != nil {
-		log.Printf("Initial Gemini API call failed for model %s: %v", modelCfg.ModelName, err)
+		errorLogger.Printf("Initial Gemini API call failed for model %s: %v", modelCfg.ModelName, err) // エラーロガーを使用
 
 		// 429 エラーかどうかを判定
 		if gapiErr, ok := err.(*googleapi.Error); ok && gapiErr.Code == 429 {
-			log.Printf("Quota exceeded for model %s. Attempting fallback...", modelCfg.ModelName)
+			log.Printf("Quota exceeded for model %s. Attempting fallback...", modelCfg.ModelName) // これは通常のログで良い
 
 			// 1. Secondary Model で再試行
 			if modelCfg.SecondaryModelName != "" {
-				log.Printf("Attempting retry with secondary model: %s", modelCfg.SecondaryModelName)
+				log.Printf("Attempting retry with secondary model: %s", modelCfg.SecondaryModelName) // これは通常のログで良い
 				secondaryModel := c.genaiClient.GenerativeModel(modelCfg.SecondaryModelName)
 				secondaryModel.Tools = c.tools // Tools を設定
 
@@ -138,34 +153,34 @@ func (c *Chat) GetResponse(userID, username, message, timestamp, prompt string) 
 
 				if err == nil {
 					// Secondary Model で成功した場合、以降の処理に進む (モデル名は Secondary を使う)
-					log.Printf("Successfully generated content with secondary model: %s", modelCfg.SecondaryModelName)
+					log.Printf("Successfully generated content with secondary model: %s", modelCfg.SecondaryModelName) // これは通常のログで良い
 					// モデル名を Secondary に差し替えて処理を続行
 					modelCfg.ModelName = modelCfg.SecondaryModelName // 以降の処理で使うモデル名を更新
 					goto HandleResponse // エラーがなかったのでレスポンス処理へジャンプ
 				}
 				// Secondary Model でもエラーが発生した場合
-				log.Printf("Secondary Gemini API call failed for model %s: %v", modelCfg.SecondaryModelName, err)
+				errorLogger.Printf("Secondary Gemini API call failed for model %s: %v", modelCfg.SecondaryModelName, err) // エラーロガーを使用
 				// Secondary での 429 エラーも考慮するなら、ここで再度チェックするが、一旦 Ollama フォールバックへ
 			} else {
-				log.Println("Secondary model name not configured.")
+				log.Println("Secondary model name not configured.") // これは通常のログで良い
 			}
 
 			// 2. Ollama にフォールバック
 			if modelCfg.Ollama.Enabled {
-				log.Printf("Falling back to Ollama (%s)", modelCfg.Ollama.ModelName)
+				log.Printf("Falling back to Ollama (%s)", modelCfg.Ollama.ModelName) // これは通常のログで良い
 				// getOllamaResponse を呼び出す
 				responseText, ollamaElapsed, ollamaErr := c.getOllamaResponse(userID, message, fullInput, modelCfg.Ollama)
 				if ollamaErr != nil {
 					// Ollama も失敗した場合、元の 429 エラーと Ollama エラーを合わせて返すか検討
 					// ここでは元の 429 エラーを返すことにする
-					log.Printf("Ollama fallback failed: %v", ollamaErr)
+					errorLogger.Printf("Ollama fallback failed for user %s: %v", userID, ollamaErr) // エラーロガーを使用
 					return "", elapsed, modelCfg.ModelName, fmt.Errorf("Gemini APIクォータ超過後、Ollamaフォールバックも失敗: (Gemini: %w), (Ollama: %v)", err, ollamaErr) // 元の Gemini エラーを返す
 				}
 				// Ollama で成功した場合
-				log.Printf("Successfully generated content with Ollama fallback: %s", modelCfg.Ollama.ModelName)
+				log.Printf("Successfully generated content with Ollama fallback: %s", modelCfg.Ollama.ModelName) // これは通常のログで良い
 				return responseText, ollamaElapsed, modelCfg.Ollama.ModelName, nil
 			} else {
-				log.Println("Ollama is not enabled, cannot fallback.")
+				log.Println("Ollama is not enabled, cannot fallback.") // これは通常のログで良い
 			}
 
 			// Secondary Model もなく、Ollama も無効な場合は、元の 429 エラーを返す
@@ -173,6 +188,7 @@ func (c *Chat) GetResponse(userID, username, message, timestamp, prompt string) 
 
 		} else {
 			// 429 以外の Gemini API エラーの場合
+			errorLogger.Printf("Gemini API error for model %s: %v", modelCfg.ModelName, err) // エラーロガーを使用
 			return "", elapsed, modelCfg.ModelName, fmt.Errorf("Gemini APIからのエラー: %w", err)
 		}
 	}
@@ -203,12 +219,12 @@ HandleResponse: // Secondary Model で成功した場合のジャンプ先
 
 					toolResult, toolErr = c.weatherService.HandleFunctionCall(fn)
 					if toolErr != nil {
-						log.Printf("Error handling function call %s via WeatherService: %v", fn.Name, toolErr) // エラーログは残す
+						errorLogger.Printf("Error handling function call %s via WeatherService: %v", fn.Name, toolErr) // エラーロガーを使用
 						toolResult = fmt.Sprintf("関数の処理中にエラーが発生しました: %v", toolErr)
 						toolErr = nil // エラーは処理済みとしてnilにする
 					}
 				default:
-					log.Printf("Part %d is an unexpected type: %T", i, v) // 未知の型はログに残す
+					errorLogger.Printf("Part %d is an unexpected type: %T", i, v) // エラーロガーを使用
 				}
 			}
 
@@ -227,7 +243,7 @@ HandleResponse: // Secondary Model で成功した場合のジャンプ先
 					c.historyMgr.Add(userID, message, finalResponse)
 					// log.Printf("Added combined response to history for user %s", userID) // デバッグ用ログコメントアウト
 				} else {
-					log.Printf("Skipping history add for user %s because combined response is empty.", userID) // これは残す
+					errorLogger.Printf("Skipping history add for user %s because combined response is empty.", userID) // エラーロガーを使用
 				}
 				return finalResponse, 0, "zutool", nil
 			}
@@ -244,19 +260,19 @@ HandleResponse: // Secondary Model で成功した場合のジャンプ先
 				c.historyMgr.Add(userID, message, responseText)
 			// log.Printf("Added normal text response to history for user %s", userID)
 		} else {
-			log.Printf("Skipping history add for user %s because responseText is empty.", userID)
+			errorLogger.Printf("Skipping history add for user %s because responseText is empty.", userID) // エラーロガーを使用
 		}
 		// Gemini のモデル名を返す (読み込んだ modelCfg から)
 		return responseText, elapsed, modelCfg.ModelName, nil
 
 	} else {
-		log.Println("Gemini response candidate content or parts are empty.")
+		errorLogger.Println("Gemini response candidate content or parts are empty.") // エラーロガーを使用
 		}
 	} else {
-		log.Println("Gemini response candidates are empty.")
+		errorLogger.Println("Gemini response candidates are empty.") // エラーロガーを使用
 	}
 
-	log.Println("No valid candidates found in Gemini response.")
+	errorLogger.Println("No valid candidates found in Gemini response.") // エラーロガーを使用
 	responseText := "すみません、応答を取得できませんでした。"
 	// エラー時もモデル名を返す (読み込んだ modelCfg から)
 	return responseText, elapsed, modelCfg.ModelName, nil
@@ -264,4 +280,9 @@ HandleResponse: // Secondary Model で成功した場合のジャンプ先
 
 func (c *Chat) Close() {
 	c.genaiClient.Close()
+}
+
+// GetErrorLogger はエラーログ用のロガーを返します。
+func GetErrorLogger() *log.Logger {
+	return errorLogger
 }

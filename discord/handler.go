@@ -14,21 +14,33 @@ func setupHandlers(s *discordgo.Session, geminiAPIKey string) error {
 	const defaultMaxHistorySize = 10
 	historyMgr := history.NewInMemoryHistoryManager(defaultMaxHistorySize)
 
-	chatSvc, err := chat.NewChat(geminiAPIKey, historyMgr) 
+	chatSvc, err := chat.NewChat(geminiAPIKey, historyMgr)
 	if err != nil {
 		return fmt.Errorf("Chat サービスの初期化に失敗しました: %w", err)
 	}
 
+	// chat パッケージからエラーロガーを取得し、discord パッケージに設定
+	errorLogger := chat.GetErrorLogger()
+	SetErrorLogger(errorLogger)
+
 	err = os.MkdirAll("log", 0755)
 	if err != nil {
+		// エラーロガーが設定されていればそちらにも出力
+		if errorLogger != nil {
+			errorLogger.Printf("log ディレクトリの作成に失敗しました: %v", err)
+		}
 		return fmt.Errorf("log ディレクトリの作成に失敗しました: %w", err)
 	}
 
 	logFile, err := os.OpenFile("log/app.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
+		// エラーロガーが設定されていればそちらにも出力
+		if errorLogger != nil {
+			errorLogger.Printf("ログファイル 'log/app.log' のオープンに失敗しました: %v", err)
+		}
 		return fmt.Errorf("ログファイル 'log/app.log' のオープンに失敗しました: %w", err)
 	}
-	log.SetOutput(logFile)
+	log.SetOutput(logFile) // 標準ロガーは app.log に出力
 
 	s.AddHandler(onReady)
 	s.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
