@@ -86,16 +86,12 @@ func StartBot(cfg *config.Config) error {
 		return errors.New("session.State.User is nil after open")
 	}
 
-	// コマンド登録
 	registeredCommands := make([]*discordgo.ApplicationCommand, len(commands))
 	log.Println("Registering commands...")
 	for i, v := range commands {
 		cmd, err := session.ApplicationCommandCreate(session.State.User.ID, "", v)
 		if err != nil {
 			log.Printf("Can not create '%v' command for UserID %s: %v", v.Name, session.State.User.ID, err)
-			// エラーが発生しても他のコマンド登録を試みる (continue)
-			// あるいは、ここでエラーを返して起動失敗とする選択肢もある
-			// return fmt.Errorf("failed to create command %s: %w", v.Name, err)
 			continue
 		}
 		registeredCommands[i] = cmd

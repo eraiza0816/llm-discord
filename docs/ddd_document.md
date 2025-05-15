@@ -128,8 +128,8 @@
 - HistoryManager (`history/history.go`, `history/duckdb_manager.go`)
   - 役割: Discordのスレッド（またはチャンネル）単位およびユーザー単位でのチャット履歴を管理する。DuckDBデータベースを使用して履歴を永続化する。
   - インターフェース (`history.HistoryManager`):
-    - `Add(userID, threadID, message, response)`: 指定されたユーザーとスレッドの履歴にメッセージと応答を追加する。
-    - `Get(userID, threadID)`: 指定されたユーザーとスレッドの履歴を取得する。
+    - `Add(userID, threadID, message, response)`: 指定されたユーザーとスレッドの履歴にメッセージと応答を追加する。履歴は全て保存され、古いものは削除されない。
+    - `Get(userID, threadID)`: 指定されたユーザーとスレッドの履歴を取得する。データベースからは全ての履歴を取得し、最新20ペアを返す。
     - `Clear(userID, threadID)`: 指定されたユーザーとスレッドの履歴をクリアする。
     - `ClearAllByThreadID(threadID)`: 指定されたスレッドの全ユーザーの履歴をクリアする。
     - `Close()`: データベース接続などのリソースを解放する。

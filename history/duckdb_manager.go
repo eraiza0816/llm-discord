@@ -9,16 +9,13 @@ import (
 	"path/filepath"
 	"time"
 
-	_ "github.com/marcboeker/go-duckdb" // DuckDB driver
+	_ "github.com/marcboeker/go-duckdb"
 )
 
-// DuckDBHistoryManager はDuckDBを使用してチャット履歴を管理します。
 type DuckDBHistoryManager struct {
 	db *sql.DB
 }
 
-// NewDuckDBHistoryManager は新しいDuckDBHistoryManagerを初期化します。
-// データベースファイルは "data" ディレクトリ内に "chat_history.duckdb" という名前で作成されます。
 func NewDuckDBHistoryManager() (*DuckDBHistoryManager, error) {
 	dbPath := filepath.Join("data", "chat_history.duckdb")
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
@@ -30,10 +27,6 @@ func NewDuckDBHistoryManager() (*DuckDBHistoryManager, error) {
 		return nil, fmt.Errorf("DuckDBデータベースへの接続に失敗しました: %w", err)
 	}
 
-	// テーブルが存在しない場合は作成
-	// SQLiteとは異なり、DuckDBではJSON型を直接サポートしているため、history_jsonはJSON型として定義できる
-	// ただし、互換性のためにTEXT型として保存し、Go側でJSONのシリアライズ/デシリアライズを行うアプローチも一般的
-	// ここではTEXT型として扱う
 	createTableSQL := `
 	CREATE TABLE IF NOT EXISTS thread_histories (
 		thread_id VARCHAR NOT NULL,
@@ -50,30 +43,31 @@ func NewDuckDBHistoryManager() (*DuckDBHistoryManager, error) {
 	return &DuckDBHistoryManager{db: db}, nil
 }
 
-// Add は指定されたユーザーとスレッドの履歴にメッセージと応答を追加します。
 func (m *DuckDBHistoryManager) Add(userID, threadID, message, response string) error {
-	history, err := m.Get(userID, threadID)
+	// まず、現在の全履歴を取得する
+	var currentHistoryJSON string
+	querySQL := "SELECT history_json FROM thread_histories WHERE user_id = ? AND thread_id = ?;"
+	err := m.db.QueryRow(querySQL, userID, threadID).Scan(&currentHistoryJSON)
+
+	var history []HistoryMessage
 	if err != nil {
-		// エラーが "履歴が見つかりません" の場合、新しい履歴を作成
-		if err.Error() != fmt.Sprintf("ユーザー %s のスレッド %s の履歴が見つかりません", userID, threadID) {
-			return fmt.Errorf("履歴の取得に失敗しました: %w", err)
+		if err == sql.ErrNoRows {
+			// 履歴が見つからない場合は新しい履歴を作成
+			history = []HistoryMessage{}
+		} else {
+			return fmt.Errorf("既存履歴のクエリ実行に失敗しました: %w", err)
 		}
-		history = []HistoryMessage{} // 空の履歴で初期化
+	} else {
+		// 既存の履歴をデシリアライズ
+		if err := json.Unmarshal([]byte(currentHistoryJSON), &history); err != nil {
+			return fmt.Errorf("既存履歴のJSONデシリアライズに失敗しました: %w", err)
+		}
 	}
 
 	history = append(history, HistoryMessage{Role: "user", Content: message})
 	history = append(history, HistoryMessage{Role: "model", Content: response})
 
-	// 履歴の最大サイズを超えた場合、古いものから削除 (SQLiteManagerと同様のロジック)
-	// model.json から max_history_size を取得する必要があるが、ここでは固定値とするか、
-	// もしくは HistoryManager の初期化時に渡すようにインターフェースを変更する必要がある。
-	// 現状のインターフェースでは直接 model.json を参照できないため、一旦固定値で実装する。
-	// TODO: max_history_size を設定可能にする
-	maxHistorySize := 20 // 仮の最大履歴サイズ
-	if len(history) > maxHistorySize*2 { // メッセージとレスポンスのペアなので *2
-		history = history[len(history)-maxHistorySize*2:]
-	}
-
+	// 全ての履歴をJSONとしてシリアライズ
 	historyJSON, err := json.Marshal(history)
 	if err != nil {
 		return fmt.Errorf("履歴のJSONシリアライズに失敗しました: %w", err)
@@ -95,6 +89,7 @@ func (m *DuckDBHistoryManager) Add(userID, threadID, message, response string) e
 }
 
 // Get は指定されたユーザーとスレッドの履歴を取得します。
+// データベースからは全ての履歴を取得し、最新20ペアを返します。
 func (m *DuckDBHistoryManager) Get(userID, threadID string) ([]HistoryMessage, error) {
 	var historyJSON string
 	querySQL := "SELECT history_json FROM thread_histories WHERE user_id = ? AND thread_id = ?;"
@@ -107,11 +102,18 @@ func (m *DuckDBHistoryManager) Get(userID, threadID string) ([]HistoryMessage, e
 		return nil, fmt.Errorf("履歴のクエリ実行に失敗しました: %w", err)
 	}
 
-	var history []HistoryMessage
-	if err := json.Unmarshal([]byte(historyJSON), &history); err != nil {
+	var fullHistory []HistoryMessage
+	if err := json.Unmarshal([]byte(historyJSON), &fullHistory); err != nil {
 		return nil, fmt.Errorf("履歴のJSONデシリアライズに失敗しました: %w", err)
 	}
-	return history, nil
+
+	// 最新20ペアを抽出する
+	maxHistorySizeToReturn := 20 // 返却する最大履歴ペア数
+	if len(fullHistory) > maxHistorySizeToReturn*2 {
+		return fullHistory[len(fullHistory)-maxHistorySizeToReturn*2:], nil
+	}
+
+	return fullHistory, nil // 20ペア以下の場合はそのまま全件返す
 }
 
 // Clear は指定されたユーザーとスレッドの履歴をクリアします。
