@@ -1,4 +1,4 @@
-package discord
+\package discord
 
 import (
 	"fmt"
@@ -7,18 +7,17 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-var errorLogger *log.Logger // エラーログ用ロガー
+var errorLogger *log.Logger
 
-// SetErrorLogger はエラーログ用ロガーを設定します。
 func SetErrorLogger(logger *log.Logger) {
 	errorLogger = logger
 }
 
 func sendErrorResponse(s *discordgo.Session, i *discordgo.InteractionCreate, err error) {
-	if errorLogger != nil { // ロガーが設定されているか確認
-		errorLogger.Printf("Error occurred: %v", err) // エラーロガーを使用
+	if errorLogger != nil {
+		errorLogger.Printf("Error occurred: %v", err)
 	} else {
-		log.Printf("Error occurred: %v", err) // ロガーが設定されていない場合は標準ログを使用
+		log.Printf("Error occurred: %v", err)
 	}
 
 	content := fmt.Sprintf("エラーが発生しました: %v", err)
@@ -27,19 +26,19 @@ func sendErrorResponse(s *discordgo.Session, i *discordgo.InteractionCreate, err
 		Embeds:  &[]*discordgo.MessageEmbed{},
 	})
 	if editErr != nil {
-		if errorLogger != nil { // ロガーが設定されているか確認
-			errorLogger.Printf("Failed to send error response via InteractionResponseEdit: %v (original error: %v)", editErr, err) // エラーロガーを使用
+		if errorLogger != nil {
+			errorLogger.Printf("Failed to send error response via InteractionResponseEdit: %v (original error: %v)", editErr, err)
 		} else {
-			log.Printf("Failed to send error response via InteractionResponseEdit: %v (original error: %v)", editErr, err) // ロガーが設定されていない場合は標準ログを使用
+			log.Printf("Failed to send error response via InteractionResponseEdit: %v (original error: %v)", editErr, err)
 		}
 	}
 }
 
 func sendEphemeralErrorResponse(s *discordgo.Session, i *discordgo.InteractionCreate, err error) {
-	if errorLogger != nil { // ロガーが設定されているか確認
-		errorLogger.Printf("Error occurred: %v", err) // エラーロガーを使用
+	if errorLogger != nil {
+		errorLogger.Printf("Error occurred: %v", err)
 	} else {
-		log.Printf("Error occurred: %v", err) // ロガーが設定されていない場合は標準ログを使用
+		log.Printf("Error occurred: %v", err)
 	}
 	content := fmt.Sprintf("エラーが発生しました: %v", err)
 	errResp := &discordgo.InteractionResponse{
@@ -50,10 +49,10 @@ func sendEphemeralErrorResponse(s *discordgo.Session, i *discordgo.InteractionCr
 		},
 	}
 	if respErr := s.InteractionRespond(i.Interaction, errResp); respErr != nil {
-		if errorLogger != nil { // ロガーが設定されているか確認
-			errorLogger.Printf("Failed to send ephemeral error response: %v (original error: %v)", respErr, err) // エラーロガーを使用
+		if errorLogger != nil {
+			errorLogger.Printf("Failed to send ephemeral error response: %v (original error: %v)", respErr, err)
 		} else {
-			log.Printf("Failed to send ephemeral error response: %v (original error: %v)", respErr, err) // ロガーが設定されていない場合は標準ログを使用
+			log.Printf("Failed to send ephemeral error response: %v (original error: %v)", respErr, err)
 		}
 	}
 }
