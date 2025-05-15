@@ -1,4 +1,5 @@
 ## 変更履歴
+- 2025/05/15: エラーログを `app.log` から `error.log` に出力するように変更。
 - 2025/05/02: `discord/embeds.go` の `splitToEmbedFields` を修正し、マルチバイト文字が分割されて文字化けする問題を解消。
 - 2025/04/02: `/chat`, `/about` コマンド実行時に `model.json` を読み込むように変更。
 - 2025/04/02: Gemini API 429 エラー時に `secondary_model_name` で再試行し、Ollama へフォールバックする機能を追加。`loader.ModelConfig` に `SecondaryModelName` フィールドを追加。
