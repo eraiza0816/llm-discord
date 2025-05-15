@@ -22,11 +22,6 @@ json/model.json.sample は書き込み禁止
         2025/04/01 14:38:31 StartBot called
         ~省略~
         2025/04/01 14:38:32 session.State.User: ぺちこ#8661
-        2025/04/01 14:38:33 Successfully created 'chat' command.
-        2025/04/01 14:38:33 Successfully created 'reset' command.
-        2025/04/01 14:38:33 Successfully created 'about' command.
-        2025/04/01 14:38:33 Successfully created 'edit' command.
-        2025/04/01 14:38:33 Registered commands: [0xc000494000 0xc000254b00 0xc000494210 0xc000494160]
         ```
 - エラーがある場合は内容を読んで，原因を考えて，エラーに対処して
 - 起動に成功していても，動作に問題がある場合がある。調査する時は， `log/app.log` に原因が出ているからそこから調査して

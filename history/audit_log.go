@@ -32,7 +32,6 @@ func InitAuditLog() error {
 		}
 		log.Println("Created data directory for audit logs.")
 	}
-	log.Println("Audit log (JSONL) initialized successfully.")
 	return nil
 }
 

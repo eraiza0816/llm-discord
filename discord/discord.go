@@ -99,9 +99,9 @@ func StartBot(cfg *config.Config) error {
 			continue
 		}
 		registeredCommands[i] = cmd
-		log.Printf("Successfully created '%v' command.", cmd.Name)
+		// log.Printf("Successfully created '%v' command.", cmd.Name)
 	}
-	log.Printf("Registered commands: %v", registeredCommands)
+	// log.Printf("Registered commands: %v", registeredCommands)
 
 
 	// setupHandlers から history.HistoryManager を受け取る
