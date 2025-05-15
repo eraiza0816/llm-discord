@@ -8,8 +8,6 @@ import (
 )
 
 func TestSplitToEmbedFields(t *testing.T) {
-	// discordgo の定数を使うのが理想だけど、テストファイルから直接参照できない場合があるので、
-	// ここでは同じ値を定義しておく（もし discordgo 側で変更されたら追従が必要）
 	const maxLen = 1024 // discordgo.MessageEmbedFieldValueCharacterLimit
 
 	tests := []struct {

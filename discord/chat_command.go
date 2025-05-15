@@ -7,7 +7,7 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/eraiza0816/llm-discord/chat"
-	"github.com/eraiza0816/llm-discord/loader" // loader を使うので残す
+	"github.com/eraiza0816/llm-discord/loader"
 )
 
 func chatCommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate, chatSvc chat.Service) {
@@ -45,13 +45,8 @@ func chatCommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate, ch
 		},
 	})
 
-	// chatSvc.GetResponse の呼び出しは現状維持。chat.Service の修正は後で行う。
-	// ただし、userPrompt の取得ロジックは modelCfg を使うので、読み込んだ modelCfg を使うようにする。
-	// また、GetResponse に modelCfg を渡す必要があるかもしれないため、chat.Service のインターフェースと実装を確認・修正する必要がある。
-	// ここでは一旦、既存の GetResponse を呼び出すが、後続の修正が必要。
-	response, elapsed, modelName, err := chatSvc.GetResponse(userID, username, message, timestamp, userPrompt) // modelCfg が必要になる可能性
+	response, elapsed, modelName, err := chatSvc.GetResponse(userID, username, message, timestamp, userPrompt)
 	if err != nil {
-		// エラーレスポンス関数も modelCfg を使わないように修正が必要か確認 -> sendErrorResponse は使っていない
 		sendErrorResponse(s, i, fmt.Errorf("LLMからの応答取得中にエラーが発生しました: %w", err))
 		return
 	}
@@ -67,11 +62,10 @@ func chatCommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate, ch
 		Color: 0xfff9b7,
 	}
 
-	// embedBot の Author 情報は読み込んだ modelCfg から取得する
 	embedBot := &discordgo.MessageEmbed{
 		Author: &discordgo.MessageEmbedAuthor{
-			Name:    modelCfg.Name, // ローカルで読み込んだ modelCfg を使用
-			IconURL: modelCfg.Icon, // ローカルで読み込んだ modelCfg を使用
+			Name:    modelCfg.Name,
+			IconURL: modelCfg.Icon,
 		},
 		Fields: splitToEmbedFields(response),
 		Color:  0xa8ffee,
