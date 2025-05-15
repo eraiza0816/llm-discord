@@ -1,80 +1,79 @@
 package history
 
 import (
-	"strings"
 	"sync"
 )
 
+// HistoryMessage はチャット履歴の単一のメッセージを表します。
+type HistoryMessage struct {
+	Role    string `json:"role"`    // "user" または "model"
+	Content string `json:"content"` // メッセージの内容
+}
+
 type HistoryManager interface {
-	Add(userID string, threadID string, message string, response string)
-	Get(userID string, threadID string) string
-	Clear(userID string, threadID string)
-	ClearAllByThreadID(threadID string) // 特定のスレッドの全ユーザー履歴をクリア（オプション）
-	Close() error                       // 追加
+	Add(userID string, threadID string, message string, response string) error // errorを返すように変更
+	Get(userID string, threadID string) ([]HistoryMessage, error)             // 戻り値を []HistoryMessage, error に変更
+	Clear(userID string, threadID string) error                               // errorを返すように変更
+	ClearAllByThreadID(threadID string) error                                 // errorを返すように変更
+	Close() error
 }
 
 type InMemoryHistoryManager struct {
-	histories      map[string][]string // ユーザーIDをキーにした履歴のスライス
-	mutex          sync.Mutex          // 複数 goroutine からのアクセスを保護するためのミューテックス
-	maxHistorySize int                 // 保持する履歴の最大数（メッセージと応答のペア数ではない点に注意！）
+	histories      map[string][]HistoryMessage // ユーザーIDをキーにした履歴のスライス ([]HistoryMessage に変更)
+	mutex          sync.Mutex
+	maxHistorySize int
 }
 
-func NewInMemoryHistoryManager(maxSize int) HistoryManager {
+func NewInMemoryHistoryManager(maxSize int) (HistoryManager, error) { // 戻り値に error を追加
 	return &InMemoryHistoryManager{
-		histories:      make(map[string][]string),
+		histories:      make(map[string][]HistoryMessage),
 		maxHistorySize: maxSize,
-		// mutex はゼロ値で初期化されるからこれでOK！
-	}
+	}, nil
 }
 
-// InMemoryHistoryManager はメモリ上で履歴を管理しますが、スレッドIDを考慮するようには変更しません。
-// スレッド対応は SQLiteHistoryManager で行います。
-// 既存の InMemoryHistoryManager は、スレッド非対応のチャンネルでの一時的な履歴管理や、
-// テスト用途などで引き続き利用される可能性があります。
-// そのため、インターフェースの変更に合わせてダミーの threadID 引数を追加しますが、
-// 実際の動作は従来のユーザーID単位のままです。
-
-func (m *InMemoryHistoryManager) Add(userID string, threadID string, message string, response string) {
+func (m *InMemoryHistoryManager) Add(userID string, threadID string, message string, response string) error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
-	// threadID は InMemoryHistoryManager では使用しない
 	userHistory := m.histories[userID]
-	userHistory = append(userHistory, message, response)
+	userHistory = append(userHistory, HistoryMessage{Role: "user", Content: message})
+	userHistory = append(userHistory, HistoryMessage{Role: "model", Content: response})
 
-	if len(userHistory) > m.maxHistorySize {
-		removeCount := len(userHistory) - m.maxHistorySize
+	// 履歴の最大サイズを超えた場合、古いものから削除 (ペアで考慮)
+	if len(userHistory) > m.maxHistorySize*2 {
+		removeCount := len(userHistory) - m.maxHistorySize*2
 		userHistory = userHistory[removeCount:]
 	}
 	m.histories[userID] = userHistory
+	return nil
 }
 
-func (m *InMemoryHistoryManager) Get(userID string, threadID string) string {
+func (m *InMemoryHistoryManager) Get(userID string, threadID string) ([]HistoryMessage, error) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
-	// threadID は InMemoryHistoryManager では使用しない
-	return strings.Join(m.histories[userID], "\n")
+	history, ok := m.histories[userID]
+	if !ok {
+		return []HistoryMessage{}, nil // 履歴がない場合は空のスライスを返す
+	}
+	return history, nil
 }
 
-func (m *InMemoryHistoryManager) Clear(userID string, threadID string) {
+func (m *InMemoryHistoryManager) Clear(userID string, threadID string) error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
-	// threadID は InMemoryHistoryManager では使用しない
 	delete(m.histories, userID)
+	return nil
 }
 
-// ClearAllByThreadID は InMemoryHistoryManager では実装しません（または全ユーザーの全履歴をクリアするなどの代替動作）。
-// 今回は何もしないようにします。
-func (m *InMemoryHistoryManager) ClearAllByThreadID(threadID string) {
+func (m *InMemoryHistoryManager) ClearAllByThreadID(threadID string) error {
 	// InMemoryHistoryManager ではこの操作はサポートしないか、
 	// もしくは全ユーザーの履歴をクリアするなどの振る舞いになる。
 	// ここでは何もしない。
+	return nil
 }
 
-// Close implements HistoryManager.
-// For InMemoryHistoryManager, there's nothing to close.
 func (m *InMemoryHistoryManager) Close() error {
-	return nil // 何もクローズするものがないのでnilを返す
+	return nil
 }

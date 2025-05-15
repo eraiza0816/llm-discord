@@ -16,12 +16,12 @@ func setupHandlers(s *discordgo.Session, geminiAPIKey string) (history.HistoryMa
 	const defaultMaxHistorySize = 10 // SQLite側でもこの値を参照するようにする
 	const dbPath = "data"             // データベースファイルの保存場所
 
-	// historyMgr を SQLiteHistoryManager で初期化
-	historyMgr, err := history.NewSQLiteHistoryManager(dbPath, defaultMaxHistorySize)
+	// historyMgr を DuckDBHistoryManager で初期化
+	historyMgr, err := history.NewDuckDBHistoryManager()
 	if err != nil {
 		// エラーロガーが利用可能になる前にエラーが発生する可能性があるため、標準ログにも出力
-		log.Printf("SQLiteHistoryManager の初期化に失敗しました: %v", err)
-		return nil, fmt.Errorf("SQLiteHistoryManager の初期化に失敗しました: %w", err)
+		log.Printf("DuckDBHistoryManager の初期化に失敗しました: %v", err)
+		return nil, fmt.Errorf("DuckDBHistoryManager の初期化に失敗しました: %w", err)
 	}
 	// TODO: アプリケーション終了時に historyMgr.Close() を呼び出す処理を追加する必要がある -> discord.go で対応済み
 

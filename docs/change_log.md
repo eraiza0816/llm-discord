@@ -1,4 +1,13 @@
 ## 変更履歴
+- 2025/05/15: 不要になったSQLite関連のコードとドキュメントを削除。
+    - `history/sqlite_manager.go` を削除 (空ファイルで上書き)。
+    - `go mod tidy` を実行し、`github.com/mattn/go-sqlite3` の依存関係を削除。
+    - `docs/ddd_document.md` からSQLiteに関する記述を削除。
+- 2025/05/15: チャット履歴のデータベースをSQLiteからDuckDBに変更。
+    - `history/duckdb_manager.go` を新規作成。
+    - `discord/handler.go` で `NewDuckDBHistoryManager` を使用するように変更。
+    - `go.mod` に `github.com/marcboeker/go-duckdb` を追加。
+    - `docs/ddd_document.md` の関連記述を更新。
 - 2025/05/15: LLMに日付と時刻の情報を渡すように修正。`chat/chat.go` と `chat/prompt.go` を変更。
 - 2025/05/15: `discord/discord.go` の `StartBot` 関数における構文エラーを修正し、`HistoryManager` が意図せず早期にクローズされる問題を解決。会話履歴が正しく永続化されるように改善。エラーハンドリングとログ出力を強化し、`session.Close()` が確実に呼ばれるように修正。
 - 2025/05/15: Discord Botにスレッド単位での会話履歴管理機能を追加。

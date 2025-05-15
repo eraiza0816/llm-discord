@@ -36,12 +36,12 @@
   - チャット: ユーザーとLLMとの対話の管理
   - コマンド処理: ユーザーからのコマンドの解析と実行
   - 設定管理: Botの設定の読み込みと管理 (`.env`, `model.json`, `custom_model.json`)
-  - 履歴管理: Discordのスレッド（またはチャンネル）単位およびユーザー単位でのチャット履歴の永続化と取得 (SQLiteを使用)
+  - 履歴管理: Discordのスレッド（またはチャンネル）単位およびユーザー単位でのチャット履歴の永続化と取得 (DuckDBを使用)
 - 境界づけられたコンテキスト:
   - Discord Bot: Discord APIとのインターフェース (`discord` パッケージ)。スレッドIDの取得とハンドラへの引き渡しを含む。
   - LLMクライアント: LLM API (Gemini, Ollama) とのインターフェース (`chat` パッケージ)。スレッドIDを考慮した履歴の取得と保存を行う。
   - 設定ローダー: 設定ファイルの読み込み (`loader`, `config` パッケージ)
-  - 履歴マネージャー: チャット履歴の管理 (`history` パッケージ)。SQLiteによる永続化、スレッドIDとユーザーIDに基づいた履歴操作。
+  - 履歴マネージャー: チャット履歴の管理 (`history` パッケージ)。DuckDBによる永続化、スレッドIDとユーザーIDに基づいた履歴操作。
 - 関係:
   - Discord BotはLLMクライアントを利用してチャット機能を提供します。
   - Discord Botはユーザーからのコマンドを受け付け、適切な処理を呼び出します。
@@ -125,16 +125,16 @@
     - `getWeatherEmoji` (ヘルパー関数): 天気コード（数値または文字列）を受け取り、`weatherEmojiMap` を参照して対応する絵文字を返す共通処理。
     - `weatherEmojiMap`: 天気コードに対応する絵文字を定義する。
 
-- HistoryManager (`history/history.go`, `history/sqlite_manager.go`)
-  - 役割: Discordのスレッド（またはチャンネル）単位およびユーザー単位でのチャット履歴を管理する。SQLiteデータベースを使用して履歴を永続化する。
+- HistoryManager (`history/history.go`, `history/duckdb_manager.go`)
+  - 役割: Discordのスレッド（またはチャンネル）単位およびユーザー単位でのチャット履歴を管理する。DuckDBデータベースを使用して履歴を永続化する。
   - インターフェース (`history.HistoryManager`):
     - `Add(userID, threadID, message, response)`: 指定されたユーザーとスレッドの履歴にメッセージと応答を追加する。
     - `Get(userID, threadID)`: 指定されたユーザーとスレッドの履歴を取得する。
     - `Clear(userID, threadID)`: 指定されたユーザーとスレッドの履歴をクリアする。
     - `ClearAllByThreadID(threadID)`: 指定されたスレッドの全ユーザーの履歴をクリアする。
     - `Close()`: データベース接続などのリソースを解放する。
-  - 実装 (`history.SQLiteHistoryManager`):
-    - SQLiteデータベースへの接続、テーブル作成、CRUD操作を実装。
+  - 実装 (`history.DuckDBHistoryManager`):
+    - DuckDBデータベースへの接続、テーブル作成、CRUD操作を実装。
     - `thread_histories` テーブル (thread_id, user_id, history_json, last_updated_at) を使用。
   - 実装 (`history.InMemoryHistoryManager`):
     - 従来のユーザーID単位のメモリ上履歴管理。スレッドIDはダミー引数として受け取るが使用しない。テスト用などに利用。
@@ -202,12 +202,15 @@
     - `HistoryManager` インターフェース: `Add`, `Get`, `Clear`, `ClearAllByThreadID`, `Close` メソッドを定義。スレッドIDを引数に取る。
     - `InMemoryHistoryManager`: 従来のユーザーID単位のメモリ上履歴管理。スレッドIDはダミー引数として受け取る。`Close` は何もしない。
 
-- history/sqlite_manager.go: (新規)
-  - 役割: `HistoryManager` インターフェースのSQLite実装 (`SQLiteHistoryManager`) を提供する。
+- history/duckdb_manager.go: (新規)
+  - 役割: `HistoryManager` インターフェースのDuckDB実装 (`DuckDBHistoryManager`) を提供する。
   - 処理:
-    - `NewSQLiteHistoryManager`: SQLiteデータベースへの接続とテーブル (`thread_histories`) の初期化を行う。
-    - `Add`, `Get`, `Clear`, `ClearAllByThreadID`: スレッドIDとユーザーIDに基づいてSQLiteデータベース内の履歴を操作する。履歴はJSON形式で保存。
-    - `Close`: SQLiteデータベース接続を閉じる。
+    - `NewDuckDBHistoryManager`: DuckDBデータベースへの接続とテーブル (`thread_histories`) の初期化を行う。
+    - `Add`, `Get`, `Clear`, `ClearAllByThreadID`: スレッドIDとユーザーIDに基づいてDuckDBデータベース内の履歴を操作する。履歴はJSON形式で保存。
+    - `Close`: DuckDBデータベース接続を閉じる。
+
+- history/sqlite_manager.go: (削除)
+  - SQLiteによる履歴管理は削除された。
 
 - discord/discord.go:
   - 役割: Discord APIとのインターフェースを提供し、Botの起動、コマンド登録、リソース管理を行う。
@@ -235,7 +238,7 @@
 - discord/handler.go:
   - 役割: Discordのイベントハンドリングとコマンドディスパッチ、サービスの初期化を行う。
   - 処理:
-    - `setupHandlers(s, geminiAPIKey)`: Bot起動時に呼び出され、ログ設定、`SQLiteHistoryManager` と `ChatService` の初期化、コマンドハンドラの登録を行う。初期化された `HistoryManager` を返す。
+    - `setupHandlers(s, geminiAPIKey)`: Bot起動時に呼び出され、ログ設定、`DuckDBHistoryManager` と `ChatService` の初期化、コマンドハンドラの登録を行う。初期化された `HistoryManager` を返す。
     - `interactionCreate` ハンドラ: 受け取ったインタラクションからスレッドID（スレッドでない場合はチャンネルID）を取得し、各コマンドハンドラに渡す。
     - `onReady`: Bot準備完了時のログ出力。
 

@@ -1,10 +1,11 @@
 package chat
 
 import (
+	"fmt"
+	"log"
 	"strings"
 
 	"github.com/eraiza0816/llm-discord/history"
-	"fmt"
 )
 
 func buildFullInput(systemPrompt, userMessage string, historyMgr history.HistoryManager, userID string, threadID string, timestamp string) string {
@@ -17,10 +18,25 @@ func buildFullInput(systemPrompt, userMessage string, historyMgr history.History
 - searchWeatherPoint: 「地点コード」を知りたい、または地名を検索したい場合に使います。キーワード（地名など）が必要です。
 - getOtenkiAspInfo: 「Otenki ASP」の情報について、地点コード（例：「13112」）で質問された場合に使います。地名では使いません。
 `
-	userHistory := historyMgr.Get(userID, threadID)
 	historyText := ""
-	if userHistory != "" {
-		historyText = "会話履歴:\n" + userHistory + "\n\n"
+	if historyMgr != nil {
+		messages, err := historyMgr.Get(userID, threadID)
+		if err != nil {
+			// 履歴取得エラーはログに出力するが、処理は続行（履歴なしとして扱う）
+			log.Printf("ユーザー %s のスレッド %s の履歴取得に失敗しました: %v", userID, threadID, err)
+		} else {
+			var historyParts []string
+			for _, msg := range messages {
+				role := msg.Role
+				if role == "model" {
+					role = "assistant" // Gemini APIの期待するロール名に合わせる
+				}
+				historyParts = append(historyParts, fmt.Sprintf("%s: %s", role, msg.Content))
+			}
+			if len(historyParts) > 0 {
+				historyText = "会話履歴:\n" + strings.Join(historyParts, "\n") + "\n\n"
+			}
+		}
 	}
 
 	var sb strings.Builder
