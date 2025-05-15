@@ -20,9 +20,9 @@ type AuditLogEntry struct {
 	UserID           string    `json:"user_id"`
 	UserName         string    `json:"user_name"`
 	Content          string    `json:"content"`
-	EditedTimestamp  *time.Time `json:"edited_timestamp,omitempty"` // 編集時のみ使用
-	IsDeleted        bool      `json:"is_deleted,omitempty"`      // 削除時のみ true
-	EventType        string    `json:"event_type"` // "create", "update", "delete"
+	EditedTimestamp  *time.Time `json:"edited_timestamp,omitempty"`
+	IsDeleted        bool      `json:"is_deleted,omitempty"`
+	EventType        string    `json:"event_type"`
 }
 
 func InitAuditLog() error {
