@@ -4,12 +4,14 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	// "io" // 不要になったので削除
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/eraiza0816/llm-discord/config"
+	"github.com/eraiza0816/llm-discord/history" // 再度追加
 )
 
 func StartBot(cfg *config.Config) error {
@@ -97,9 +99,20 @@ func StartBot(cfg *config.Config) error {
 		log.Println("session.State or session.State.User is nil, skipping command registration")
 	}
 
-	err = setupHandlers(session, cfg.GeminiAPIKey)
+	// setupHandlers から history.HistoryManager を受け取る
+	var historyMgr history.HistoryManager // 型を明示的に宣言
+	historyMgr, err = setupHandlers(session, cfg.GeminiAPIKey)
 	if err != nil {
 		return fmt.Errorf("ハンドラの設定中にエラーが発生しました: %w", err)
+	}
+	// クローズ処理を defer で呼び出す
+	if historyMgr != nil {
+		defer func() {
+			log.Println("Closing HistoryManager...")
+			if err := historyMgr.Close(); err != nil {
+				log.Printf("Error closing HistoryManager: %v", err)
+			}
+		}()
 	}
 
 	session.AddHandler(func(s *discordgo.Session, r *discordgo.Ready) {

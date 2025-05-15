@@ -10,7 +10,7 @@ import (
 	"github.com/eraiza0816/llm-discord/loader"
 )
 
-func chatCommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate, chatSvc chat.Service) {
+func chatCommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate, chatSvc chat.Service, threadID string) {
 	modelCfg, err := loader.LoadModelConfig("json/model.json")
 	if err != nil {
 		log.Printf("Error loading model config: %v", err)
@@ -45,7 +45,7 @@ func chatCommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate, ch
 		},
 	})
 
-	response, elapsed, modelName, err := chatSvc.GetResponse(userID, username, message, timestamp, userPrompt)
+	response, elapsed, modelName, err := chatSvc.GetResponse(userID, threadID, username, message, timestamp, userPrompt)
 	if err != nil {
 		sendErrorResponse(s, i, fmt.Errorf("LLMからの応答取得中にエラーが発生しました: %w", err))
 		return
