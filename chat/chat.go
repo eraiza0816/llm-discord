@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -233,12 +234,18 @@ HandleResponse:
 				// 実際には、この応答を元にLLMが自然なテキストを生成する
 				// c.historyMgr.Add(userID, threadID, message, fmt.Sprintf("Tool execution: %s", toolResult)) // 履歴への追加は検討
 
-				// toolResultのログ出力を短縮
-				toolResultLog := toolResult
+				// toolResultのログ出力を短縮し、連続する空白文字を単一スペースに置換
+				spaceRegex := regexp.MustCompile(`\s+`)
+				toolResultLog := spaceRegex.ReplaceAllString(toolResult, " ")
 				if len(toolResultLog) > 200 { // ログに出力するtoolResultの長さを制限
 					toolResultLog = toolResultLog[:200] + "..."
 				}
-				log.Printf("Function call processed. Result: %s. Intro text: %s", toolResultLog, llmIntroText.String())
+				// llmIntroTextも同様に処理
+				llmIntroTextLog := spaceRegex.ReplaceAllString(llmIntroText.String(), " ")
+				if len(llmIntroTextLog) > 100 {
+					llmIntroTextLog = llmIntroTextLog[:100] + "..."
+				}
+				log.Printf("Function call processed. Result: %s. Intro text: %s", toolResultLog, llmIntroTextLog)
 
 
 				// FunctionResponseを作成
@@ -349,10 +356,11 @@ HandleResponse:
 						partsSummary = append(partsSummary, fmt.Sprintf("FunctionCall: %s, Args: %v", pt.Name, pt.Args))
 					case genai.FunctionResponse:
 						responseContent := fmt.Sprintf("%v", pt.Response["content"])
-						if len(responseContent) > 50 {
-							responseContent = responseContent[:50] + "..."
+						responseContentLog := spaceRegex.ReplaceAllString(responseContent, " ") // 連続する空白文字を単一スペースに置換
+						if len(responseContentLog) > 50 {
+							responseContentLog = responseContentLog[:50] + "..."
 						}
-						partsSummary = append(partsSummary, fmt.Sprintf("FunctionResponse: %s, Content: \"%s\"", pt.Name, responseContent))
+						partsSummary = append(partsSummary, fmt.Sprintf("FunctionResponse: %s, Content: \"%s\"", pt.Name, responseContentLog))
 					default:
 						partsSummary = append(partsSummary, fmt.Sprintf("Unknown part type: %T", pt))
 					}
