@@ -62,13 +62,23 @@ func NewChat(token string, historyMgr history.HistoryManager) (Service, error) {
 	weatherFuncDeclarations := weatherService.GetFunctionDeclarations()
 	urlReaderFuncDeclaration := GetURLReaderFunctionDeclaration() // URLリーダーの関数宣言を取得
 
-	tools := []*genai.Tool{
-		{
-			FunctionDeclarations: weatherFuncDeclarations,
-		},
-		{ // URLリーダーのツールを追加
-			FunctionDeclarations: []*genai.FunctionDeclaration{urlReaderFuncDeclaration},
-		},
+	var allDeclarations []*genai.FunctionDeclaration
+	// weatherFuncDeclarations が nil でなく、要素を持つ場合のみ追加
+	if len(weatherFuncDeclarations) > 0 {
+		allDeclarations = append(allDeclarations, weatherFuncDeclarations...)
+	}
+	// urlReaderFuncDeclaration が nil でない場合のみ追加
+	if urlReaderFuncDeclaration != nil {
+		allDeclarations = append(allDeclarations, urlReaderFuncDeclaration)
+	}
+
+	var tools []*genai.Tool
+	if len(allDeclarations) > 0 {
+		tools = []*genai.Tool{
+			{
+				FunctionDeclarations: allDeclarations,
+			},
+		}
 	}
 
 	genaiModel.Tools = tools
@@ -77,7 +87,7 @@ func NewChat(token string, historyMgr history.HistoryManager) (Service, error) {
 		genaiClient:      genaiClient,
 		genaiModel:       genaiModel,
 		weatherService:   weatherService,
-		urlReaderService: urlReaderService, // 初期化したサービスをセット
+		urlReaderService: urlReaderService,
 		historyMgr:       historyMgr,
 		tools:            tools,
 	}, nil
@@ -210,8 +220,6 @@ HandleResponse:
 				// この部分は、Function Callingの応答をどのように扱うかによって実装が変わる
 				// ここでは、toolResultを次のLLMへの入力パートとして追加する
 				// 実際には、FunctionResponseパートを作成し、再度GenerateContentを呼び出す
-				log.Printf("Function call processed. Result: %s. Intro text: %s", toolResult, llmIntroText.String())
-
 				// FunctionResponseを作成 (現在は直接使用していないが、将来的な拡張のためにコメントとして残す)
 				// parts := []genai.Part{
 				// 	genai.FunctionResponse{
@@ -245,9 +253,6 @@ HandleResponse:
 				if len(llmIntroTextLog) > 100 {
 					llmIntroTextLog = llmIntroTextLog[:100] + "..."
 				}
-				log.Printf("Function call processed. Result: %s. Intro text: %s", toolResultLog, llmIntroTextLog)
-
-
 				// FunctionResponseを作成
 				// fnName := candidate.Content.Parts[0].(genai.FunctionCall).Name // 呼び出された関数名
 				var calledFuncName string
@@ -365,8 +370,6 @@ HandleResponse:
 						partsSummary = append(partsSummary, fmt.Sprintf("Unknown part type: %T", pt))
 					}
 				}
-				log.Printf("Re-calling GenerateContent with %d parts for function %s. Parts summary: [%s]", len(partsForNextTurn), calledFuncName, strings.Join(partsSummary, ", "))
-
 				secondResp, err := c.genaiModel.GenerateContent(ctx, partsForNextTurn...)
 				elapsed += float64(time.Since(start).Milliseconds()) // 時間を加算
 
