@@ -29,7 +29,8 @@ func main() {
 	}
 
 	if err := discord.StartBot(cfg); err != nil {
-		log.Fatalf("Bot error: %v", err)
+		// log.Fatalf から log.Printf に変更し、エラー発生後もシグナル待機に進むようにする
+		log.Printf("Bot error: %v", err)
 	}
 
 	log.Println("Bot is now running. Press CTRL-C to exit.")

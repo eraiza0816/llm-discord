@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/eraiza0816/llm-discord/chat" // chat パッケージをインポート
@@ -137,12 +135,9 @@ func StartBot(cfg *config.Config) error {
 		}
 	})
 
-	log.Println("Bot setup complete. Waiting for signals...")
-	sc := make(chan os.Signal, 1)
-	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
-	receivedSignal := <-sc
-	log.Printf("Received signal: %v. Shutting down.", receivedSignal)
-
+	log.Println("Bot setup complete. Waiting for signals from main.")
 	// session.Close() はこの関数の冒頭で defer されているため、ここでは不要
-	return nil
+
+	// main.goからのシグナルで適切に終了処理が行われるよう、ここではブロックし続ける
+	select {}
 }
