@@ -41,7 +41,11 @@ func URLReaderCommand(s *discordgo.Session, i *discordgo.InteractionCreate, chat
 	cmd.Stderr = &stderr
 	err := cmd.Run()
 	if err != nil {
-		log.Printf("Error executing curl for %s: %v\nStderr: %s", url, err, stderr.String())
+		stderrStr := stderr.String()
+		if len(stderrStr) > 500 { // ログに出力するstderrの長さを制限
+			stderrStr = stderrStr[:500] + "..."
+		}
+		log.Printf("Error executing curl for %s: %v\nStderr: %s", url, err, stderrStr)
 		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{

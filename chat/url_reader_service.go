@@ -36,7 +36,11 @@ func (s *URLReaderService) GetURLContentAsText(urlString string) (string, error)
 	cmd.Stderr = &stderr
 	err := cmd.Run()
 	if err != nil {
-		log.Printf("Error executing curl for %s: %v\nStderr: %s", urlString, err, stderr.String())
+		stderrStr := stderr.String()
+		if len(stderrStr) > 500 { // ログに出力するstderrの長さを制限
+			stderrStr = stderrStr[:500] + "..."
+		}
+		log.Printf("Error executing curl for %s: %v\nStderr: %s", urlString, err, stderrStr)
 		return "", fmt.Errorf("URLの取得に失敗しました: %w", err)
 	}
 
@@ -65,7 +69,7 @@ func (s *URLReaderService) GetURLContentAsText(urlString string) (string, error)
 	}
 
 	// テキストが長すぎる場合は切り詰める (Function Callingの結果として返すには適切な長さに)
-	const maxTextLength = 5000 // Function Callingの結果としては短めにする
+	const maxTextLength = 2000 // Function Callingの結果としては短めにする (以前は5000)
 	if len(extractedText) > maxTextLength {
 		extractedText = extractedText[:maxTextLength] + "..."
 	}

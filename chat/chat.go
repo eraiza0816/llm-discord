@@ -233,6 +233,14 @@ HandleResponse:
 				// 実際には、この応答を元にLLMが自然なテキストを生成する
 				// c.historyMgr.Add(userID, threadID, message, fmt.Sprintf("Tool execution: %s", toolResult)) // 履歴への追加は検討
 
+				// toolResultのログ出力を短縮
+				toolResultLog := toolResult
+				if len(toolResultLog) > 200 { // ログに出力するtoolResultの長さを制限
+					toolResultLog = toolResultLog[:200] + "..."
+				}
+				log.Printf("Function call processed. Result: %s. Intro text: %s", toolResultLog, llmIntroText.String())
+
+
 				// FunctionResponseを作成
 				// fnName := candidate.Content.Parts[0].(genai.FunctionCall).Name // 呼び出された関数名
 				var calledFuncName string
@@ -311,15 +319,46 @@ HandleResponse:
 				var partsForNextTurn []genai.Part
 				// LLMの最初の応答 (FunctionCallを含む)
 				partsForNextTurn = append(partsForNextTurn, candidate.Content.Parts...)
+
+				// FunctionResponseに含めるtoolResultの長さを制限
+				const maxToolResultForLLM = 1800 // LLMに渡すtoolResultの最大長 (maxTextLengthより少し短く)
+				toolResultForLLM := toolResult
+				if len(toolResultForLLM) > maxToolResultForLLM {
+					toolResultForLLM = toolResultForLLM[:maxToolResultForLLM] + "..."
+				}
+
 				// ツールの実行結果
 				partsForNextTurn = append(partsForNextTurn, genai.FunctionResponse{
 					Name: calledFuncName,
 					Response: map[string]interface{}{
-						"content": toolResult,
+						"content": toolResultForLLM, // 制限した結果を渡す
 					},
 				})
 
-				log.Printf("Re-calling GenerateContent with %d parts for function %s. Parts: %+v", len(partsForNextTurn), calledFuncName, partsForNextTurn)
+				// Re-calling GenerateContent のログ出力を簡略化
+				var partsSummary []string
+				for _, p := range partsForNextTurn {
+					switch pt := p.(type) {
+					case genai.Text:
+						summary := string(pt)
+						if len(summary) > 50 {
+							summary = summary[:50] + "..."
+						}
+						partsSummary = append(partsSummary, fmt.Sprintf("Text: \"%s\"", summary))
+					case genai.FunctionCall:
+						partsSummary = append(partsSummary, fmt.Sprintf("FunctionCall: %s, Args: %v", pt.Name, pt.Args))
+					case genai.FunctionResponse:
+						responseContent := fmt.Sprintf("%v", pt.Response["content"])
+						if len(responseContent) > 50 {
+							responseContent = responseContent[:50] + "..."
+						}
+						partsSummary = append(partsSummary, fmt.Sprintf("FunctionResponse: %s, Content: \"%s\"", pt.Name, responseContent))
+					default:
+						partsSummary = append(partsSummary, fmt.Sprintf("Unknown part type: %T", pt))
+					}
+				}
+				log.Printf("Re-calling GenerateContent with %d parts for function %s. Parts summary: [%s]", len(partsForNextTurn), calledFuncName, strings.Join(partsSummary, ", "))
+
 				secondResp, err := c.genaiModel.GenerateContent(ctx, partsForNextTurn...)
 				elapsed += float64(time.Since(start).Milliseconds()) // 時間を加算
 
