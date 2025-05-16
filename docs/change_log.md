@@ -1,4 +1,7 @@
 ## 変更履歴
+- 2025/05/16: 監査ログから `edited_timestamp` を削除し、`timestamp` に統一。
+    - `history/audit_log.go`: `AuditLogEntry` 構造体から `EditedTimestamp` フィールドを削除し、`LogMessageUpdate` 関数を修正。
+    - `discord/handler.go`: `LogMessageUpdate` 関数の呼び出し箇所を修正。
 - 2025/05/16: アプリケーション終了時のシグナルハンドリングを修正し、Ctrl+Cを1回で正常に停止するように改善。
     - `main.go`: シグナルハンドリング処理をここに一本化。`discord.StartBot` のエラーハンドリングを修正。
     - `discord/discord.go`: 不要なシグナルハンドリング処理を削除し、`StartBot` 関数がブロックし続けるように修正。

@@ -20,7 +20,6 @@ type AuditLogEntry struct {
 	UserID           string    `json:"user_id"`
 	UserName         string    `json:"user_name"`
 	Content          string    `json:"content"`
-	EditedTimestamp  *time.Time `json:"edited_timestamp,omitempty"`
 	IsDeleted        bool      `json:"is_deleted,omitempty"`
 	EventType        string    `json:"event_type"`
 }
@@ -74,12 +73,11 @@ func LogMessageCreate(messageID, channelID, guildID, userID, userName, content s
 	return writeAuditLogEntry(entry)
 }
 
-func LogMessageUpdate(messageID, content string, editedTimestamp time.Time) error {
+func LogMessageUpdate(messageID, content string) error {
 	entry := AuditLogEntry{
-		MessageID:       messageID,
-		Content:         content,
-		EditedTimestamp: &editedTimestamp,
-		EventType:       "update",
+		MessageID: messageID,
+		Content:   content,
+		EventType: "update",
 	}
 	return writeAuditLogEntry(entry)
 }

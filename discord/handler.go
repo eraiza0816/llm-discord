@@ -145,12 +145,9 @@ func messageUpdateHandler(s *discordgo.Session, m *discordgo.MessageUpdate) {
 		return
 	}
 
-	editedJst := *m.EditedTimestamp
-
 	updateErr := history.LogMessageUpdate(
 		m.ID,
 		m.Content,
-		editedJst,
 	)
 	if updateErr != nil {
 		log.Printf("Failed to log message update event: %v", updateErr)
