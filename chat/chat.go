@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"regexp"
 	"strings"
 	"time"
 
@@ -100,12 +99,12 @@ func (c *Chat) GetResponse(userID, threadID, username, message, timestamp, promp
 		return "", 0, "", fmt.Errorf("設定ファイルの読み込みに失敗しました: %w", err)
 	}
 
-	// buildFullInput に threadID と timestamp を渡すように変更 (prompt.go の修正も必要)
+	// prompt.go の buildFullInput を使用して、LLMへの完全な入力文字列を構築
 	fullInput := buildFullInput(prompt, message, c.historyMgr, userID, threadID, timestamp)
 
 	if modelCfg.Ollama.Enabled {
 		log.Printf("Using Ollama (%s) for user %s in thread %s", modelCfg.Ollama.ModelName, userID, threadID)
-		// getOllamaResponse に threadID を渡すように変更 (ollama.go の修正も必要)
+		// ollama.go の getOllamaResponse を使用してOllamaからの応答を取得
 		responseText, elapsed, err := c.getOllamaResponse(userID, threadID, message, fullInput, modelCfg.Ollama)
 		if err != nil {
 			errorLogger.Printf("Ollama API call failed for user %s in thread %s: %v", userID, threadID, err)
@@ -150,7 +149,7 @@ func (c *Chat) GetResponse(userID, threadID, username, message, timestamp, promp
 
 			if modelCfg.Ollama.Enabled {
 				log.Printf("Falling back to Ollama (%s) for user %s in thread %s", modelCfg.Ollama.ModelName, userID, threadID)
-				// getOllamaResponse に threadID を渡すように変更 (ollama.go の修正も必要)
+				// ollama.go の getOllamaResponse を使用してOllamaからの応答を取得 (フォールバック)
 				responseText, ollamaElapsed, ollamaErr := c.getOllamaResponse(userID, threadID, message, fullInput, modelCfg.Ollama)
 				if ollamaErr != nil {
 					errorLogger.Printf("Ollama fallback failed for user %s in thread %s: %v", userID, threadID, ollamaErr)
@@ -216,45 +215,10 @@ HandleResponse:
 			}
 
 			if functionCallProcessed {
-				// Function Calling の結果をLLMに再度渡して、最終的な応答を生成させる
-				// この部分は、Function Callingの応答をどのように扱うかによって実装が変わる
-				// ここでは、toolResultを次のLLMへの入力パートとして追加する
-				// 実際には、FunctionResponseパートを作成し、再度GenerateContentを呼び出す
-				// FunctionResponseを作成 (現在は直接使用していないが、将来的な拡張のためにコメントとして残す)
-				// parts := []genai.Part{
-				// 	genai.FunctionResponse{
-				// 		Name: candidate.Content.Parts[0].(genai.FunctionCall).Name, // 呼び出された関数名
-				// 		Response: map[string]interface{}{
-				// 			"content": toolResult, // ツールからの生の出力
-				// 		},
-				// 	},
-				// }
-				// LLMからの導入テキストがあれば、それもコンテキストに含める
-				// ただし、通常はFunctionResponseのみを返し、LLMがそれを解釈して自然な応答を生成する
-				// if llmIntroText.Len() > 0 {
-				// parts = append([]genai.Part{genai.Text(llmIntroText.String())}, parts...)
-				// }
+				// Function Calling が実行された場合、その結果 (toolResult) を用いて
+				// LLMに再度問い合わせを行い、最終的な自然言語の応答を生成する。
 
-
-				// 再度GenerateContentを呼び出す
-				// 履歴にFunctionCallとFunctionResponseを追加する必要がある
-				// ここでは簡略化のため、toolResultをそのまま返す
-				// 実際には、この応答を元にLLMが自然なテキストを生成する
-				// c.historyMgr.Add(userID, threadID, message, fmt.Sprintf("Tool execution: %s", toolResult)) // 履歴への追加は検討
-
-				// toolResultのログ出力を短縮し、連続する空白文字を単一スペースに置換
-				spaceRegex := regexp.MustCompile(`\s+`)
-				toolResultLog := spaceRegex.ReplaceAllString(toolResult, " ")
-				if len(toolResultLog) > 200 { // ログに出力するtoolResultの長さを制限
-					toolResultLog = toolResultLog[:200] + "..."
-				}
-				// llmIntroTextも同様に処理
-				llmIntroTextLog := spaceRegex.ReplaceAllString(llmIntroText.String(), " ")
-				if len(llmIntroTextLog) > 100 {
-					llmIntroTextLog = llmIntroTextLog[:100] + "..."
-				}
-				// FunctionResponseを作成
-				// fnName := candidate.Content.Parts[0].(genai.FunctionCall).Name // 呼び出された関数名
+				// 呼び出された関数名を取得
 				var calledFuncName string
 				for _, part := range candidate.Content.Parts {
 					if fc, ok := part.(genai.FunctionCall); ok {
@@ -265,111 +229,33 @@ HandleResponse:
 
 				if calledFuncName == "" {
 					errorLogger.Printf("Could not determine called function name from candidate parts.")
-					// フォールバックとして、toolResultをそのまま返すか、エラーメッセージを返す
 					return "関数呼び出し名の取得に失敗しました。", elapsed, modelCfg.ModelName, fmt.Errorf("関数呼び出し名の取得に失敗")
 				}
 
-
-				// 新しいコンテンツリストを作成して、再度GenerateContentを呼び出す
-				// 1. 元のユーザー入力 (fullInput)
-				// 2. LLMの最初の応答 (FunctionCallを含む candidate.Content)
-				// 3. ツールの実行結果 (FunctionResponse)
-				// これらを会話履歴としてモデルに渡す
-				// ただし、genai.GenerativeModel.GenerateContent は []*Content ではなく、[]Part を取る。
-				// セッション (ChatSession) を使うと履歴管理が容易になるが、ここでは手動で構築。
-
-				// 履歴を構築する代わりに、現在のGenerateContent呼び出しにFunctionResponseを追加する
-				// GenerateContentの入力は []Part なので、FunctionResponseをPartとして渡す
-				// ただし、GenerateContentは通常、新しいユーザー入力から開始する。
-				// Function Callingの正しいフローでは、ChatSessionを使い、
-				// session.SendMessage(FunctionResponse) のようにして履歴を継続する。
-				// ここでは、既存の fullInput (ユーザーの元のメッセージ) と、
-				// LLMのFunctionCall、そしてツールのFunctionResponseを結合して新しい入力とする。
-				// これは厳密には正しくないが、ChatSessionを使わない場合の次善策。
-
-				// 正しいアプローチ: ChatSession を使うか、手動で会話履歴を構築する
-				// ここでは、GenerateContentに渡すpartsを構築して再呼び出しする
-				// 1. ユーザーの元の入力 (genai.Text(fullInput) として渡されたもの)
-				// 2. LLMの最初の応答 (FunctionCallを含む candidate.Content)
-				// 3. ツールの実行結果 (FunctionResponse)
-
-				// ユーザーの元の入力は fullInput だが、GenerateContent は []Part を取る。
-				// fullInput は既に genai.Text(fullInput) として最初の呼び出しで使われている。
-				// 履歴を模倣するために、これらの要素を []Part として組み立てる。
-
-				// var historyForSecondCall []genai.Part // 未使用のためコメントアウトまたは削除
-				// 1. ユーザーの元のメッセージ (fullInput はシステムプロンプト等も含むため、message の方が適切か検討)
-				//    ただし、最初の GenerateContent には genai.Text(fullInput) を渡している。
-				//    一貫性のため、ここでも genai.Text(fullInput) を使うか、あるいは
-				//    ChatSession のようにユーザーロールとモデルロールを区別したContentオブジェクトを使うべき。
-				//    genai.Text は単一のテキストパート。
-				//    より正確には、最初のユーザーメッセージ、最初のモデル応答(FC)、ツール応答(FR)の順。
-
-				// 2回目のGenerateContentに渡すpartsを構築する。
-				// 理想的には、ChatSessionを使い、履歴を適切に管理する。
-				// ここでは、手動で履歴のターンを模倣する。
-				// ターン1: ユーザー (fullInput に含まれるユーザーメッセージ)
-				// ターン2: モデル (FunctionCall を含む candidate.Content.Parts)
-				// ターン3: ツール (FunctionResponse)
-				// これらを GenerateContent に渡す。
-				// ただし、GenerateContent は基本的に「現在のターン」の parts を期待する。
-				// 複数のターンを渡す場合は、Content{Role:"user", Parts:...}, Content{Role:"model", Parts:...} のリストを
-				// ChatSession.History に設定し、SendMessage で新しいターンを開始するのが正しい。
-
-				// 現在の GenerateContent の枠組みでの改善案:
-				// 1. ユーザーの元の入力 (genai.Text(fullInput)) -> これは最初の呼び出しで使ったもの
-				// 2. LLMの最初の応答 (candidate.Content.Parts)
-				// 3. ツールの実行結果 (genai.FunctionResponse)
-				// これらをすべて含めて GenerateContent を呼び出す。
-				// ただし、genai.Text(fullInput) はシステムプロンプト等も含むため、
-				// ユーザーメッセージ部分だけを抽出して genai.Text として渡す方が良いかもしれない。
-				// ここでは、最初の呼び出しと同じ genai.Text(fullInput) は含めず、
-				// LLMの最初の応答 (FunctionCall) とツールの結果 (FunctionResponse) のみを渡す現在の方法を維持しつつ、
-				// ログ出力を強化して、何が渡されているかを確認できるようにする。
-				// もしこれでもダメなら、ChatSessionへの移行を強く推奨する。
-
+				// 次のLLM呼び出しのためのpartsを構築する。
+				// 構成:
+				// 1. LLMの最初の応答 (FunctionCallを含む candidate.Content.Parts)
+				// 2. ツールの実行結果 (genai.FunctionResponse)
+				// ChatSessionを使用せず手動で会話のターンを模倣している。
 				var partsForNextTurn []genai.Part
-				// LLMの最初の応答 (FunctionCallを含む)
-				partsForNextTurn = append(partsForNextTurn, candidate.Content.Parts...)
+				partsForNextTurn = append(partsForNextTurn, candidate.Content.Parts...) // LLMの最初の応答
 
-				// FunctionResponseに含めるtoolResultの長さを制限
-				const maxToolResultForLLM = 1800 // LLMに渡すtoolResultの最大長 (maxTextLengthより少し短く)
+				// LLMに渡すtoolResultの長さを制限
+				const maxToolResultForLLM = 1800
 				toolResultForLLM := toolResult
 				if len(toolResultForLLM) > maxToolResultForLLM {
 					toolResultForLLM = toolResultForLLM[:maxToolResultForLLM] + "..."
 				}
 
-				// ツールの実行結果
+				// ツールの実行結果をFunctionResponseとして追加
 				partsForNextTurn = append(partsForNextTurn, genai.FunctionResponse{
 					Name: calledFuncName,
 					Response: map[string]interface{}{
-						"content": toolResultForLLM, // 制限した結果を渡す
+						"content": toolResultForLLM,
 					},
 				})
 
-				// Re-calling GenerateContent のログ出力を簡略化
-				var partsSummary []string
-				for _, p := range partsForNextTurn {
-					switch pt := p.(type) {
-					case genai.Text:
-						summary := string(pt)
-						if len(summary) > 50 {
-							summary = summary[:50] + "..."
-						}
-						partsSummary = append(partsSummary, fmt.Sprintf("Text: \"%s\"", summary))
-					case genai.FunctionCall:
-						partsSummary = append(partsSummary, fmt.Sprintf("FunctionCall: %s, Args: %v", pt.Name, pt.Args))
-					case genai.FunctionResponse:
-						responseContent := fmt.Sprintf("%v", pt.Response["content"])
-						responseContentLog := spaceRegex.ReplaceAllString(responseContent, " ") // 連続する空白文字を単一スペースに置換
-						if len(responseContentLog) > 50 {
-							responseContentLog = responseContentLog[:50] + "..."
-						}
-						partsSummary = append(partsSummary, fmt.Sprintf("FunctionResponse: %s, Content: \"%s\"", pt.Name, responseContentLog))
-					default:
-						partsSummary = append(partsSummary, fmt.Sprintf("Unknown part type: %T", pt))
-					}
-				}
+				// Function Callingの結果を踏まえて、再度LLMにコンテンツ生成を要求
 				secondResp, err := c.genaiModel.GenerateContent(ctx, partsForNextTurn...)
 				elapsed += float64(time.Since(start).Milliseconds()) // 時間を加算
 
@@ -386,14 +272,9 @@ HandleResponse:
 					}
 				}
 
-				// 導入テキストと結合する場合 (オプション)
-				// combinedResponse := llmIntroText.String()
-				// if combinedResponse != "" && !strings.HasSuffix(combinedResponse, "\n") {
-				// 	combinedResponse += "\n"
-				// }
-				// combinedResponse += finalResponseText
-				// finalResponseText = combinedResponse
+				// (オプション) LLMからの導入テキストと最終応答を結合することも可能だが、現在はしていない。
 
+				// 最終応答があれば履歴に追加
 				if finalResponseText != "" {
 					c.historyMgr.Add(userID, threadID, message, finalResponseText)
 				} else {
