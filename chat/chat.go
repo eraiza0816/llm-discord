@@ -25,11 +25,12 @@ type Service interface {
 
 type Chat struct {
 	genaiClient    *genai.Client
-	genaiModel     *genai.GenerativeModel
-	weatherService WeatherService
-	defaultPrompt  string
-	historyMgr     history.HistoryManager
-	tools          []*genai.Tool
+	genaiModel       *genai.GenerativeModel
+	weatherService   WeatherService
+	urlReaderService *URLReaderService // URLReaderServiceを追加
+	defaultPrompt    string
+	historyMgr       history.HistoryManager
+	tools            []*genai.Tool
 }
 
 func NewChat(token string, historyMgr history.HistoryManager) (Service, error) {
@@ -55,23 +56,39 @@ func NewChat(token string, historyMgr history.HistoryManager) (Service, error) {
 	genaiModel := genaiClient.GenerativeModel(initialGeminiModelName)
 
 	weatherService := NewWeatherService()
+	urlReaderService := NewURLReaderService() // URLReaderServiceを初期化
 
 	weatherFuncDeclarations := weatherService.GetFunctionDeclarations()
+	urlReaderFuncDeclaration := GetURLReaderFunctionDeclaration() // URLリーダーの関数宣言を取得
 
-	tools := []*genai.Tool{
-		{
-			FunctionDeclarations: weatherFuncDeclarations,
-		},
+	var allDeclarations []*genai.FunctionDeclaration
+	// weatherFuncDeclarations が nil でなく、要素を持つ場合のみ追加
+	if len(weatherFuncDeclarations) > 0 {
+		allDeclarations = append(allDeclarations, weatherFuncDeclarations...)
+	}
+	// urlReaderFuncDeclaration が nil でない場合のみ追加
+	if urlReaderFuncDeclaration != nil {
+		allDeclarations = append(allDeclarations, urlReaderFuncDeclaration)
+	}
+
+	var tools []*genai.Tool
+	if len(allDeclarations) > 0 {
+		tools = []*genai.Tool{
+			{
+				FunctionDeclarations: allDeclarations,
+			},
+		}
 	}
 
 	genaiModel.Tools = tools
 
 	return &Chat{
-		genaiClient:    genaiClient,
-		genaiModel:     genaiModel,
-		weatherService: weatherService,
-		historyMgr:     historyMgr,
-		tools:          tools,
+		genaiClient:      genaiClient,
+		genaiModel:       genaiModel,
+		weatherService:   weatherService,
+		urlReaderService: urlReaderService,
+		historyMgr:       historyMgr,
+		tools:            tools,
 	}, nil
 }
 
@@ -82,12 +99,12 @@ func (c *Chat) GetResponse(userID, threadID, username, message, timestamp, promp
 		return "", 0, "", fmt.Errorf("設定ファイルの読み込みに失敗しました: %w", err)
 	}
 
-	// buildFullInput に threadID と timestamp を渡すように変更 (prompt.go の修正も必要)
+	// prompt.go の buildFullInput を使用して、LLMへの完全な入力文字列を構築
 	fullInput := buildFullInput(prompt, message, c.historyMgr, userID, threadID, timestamp)
 
 	if modelCfg.Ollama.Enabled {
 		log.Printf("Using Ollama (%s) for user %s in thread %s", modelCfg.Ollama.ModelName, userID, threadID)
-		// getOllamaResponse に threadID を渡すように変更 (ollama.go の修正も必要)
+		// ollama.go の getOllamaResponse を使用してOllamaからの応答を取得
 		responseText, elapsed, err := c.getOllamaResponse(userID, threadID, message, fullInput, modelCfg.Ollama)
 		if err != nil {
 			errorLogger.Printf("Ollama API call failed for user %s in thread %s: %v", userID, threadID, err)
@@ -132,7 +149,7 @@ func (c *Chat) GetResponse(userID, threadID, username, message, timestamp, promp
 
 			if modelCfg.Ollama.Enabled {
 				log.Printf("Falling back to Ollama (%s) for user %s in thread %s", modelCfg.Ollama.ModelName, userID, threadID)
-				// getOllamaResponse に threadID を渡すように変更 (ollama.go の修正も必要)
+				// ollama.go の getOllamaResponse を使用してOllamaからの応答を取得 (フォールバック)
 				responseText, ollamaElapsed, ollamaErr := c.getOllamaResponse(userID, threadID, message, fullInput, modelCfg.Ollama)
 				if ollamaErr != nil {
 					errorLogger.Printf("Ollama fallback failed for user %s in thread %s: %v", userID, threadID, ollamaErr)
@@ -169,11 +186,28 @@ HandleResponse:
 					fn := v
 					functionCallProcessed = true
 
-					toolResult, toolErr = c.weatherService.HandleFunctionCall(fn)
-					if toolErr != nil {
-						errorLogger.Printf("Error handling function call %s via WeatherService: %v", fn.Name, toolErr)
-						toolResult = fmt.Sprintf("関数の処理中にエラーが発生しました: %v", toolErr)
-						toolErr = nil
+					if fn.Name == "get_url_content" {
+						// URLリーダー関数の処理
+						urlString, ok := fn.Args["url"].(string)
+						if !ok {
+							toolResult = "URLが正しく指定されていません。"
+							errorLogger.Printf("Function call 'get_url_content' missing or invalid 'url' argument: %v", fn.Args)
+						} else {
+							toolResult, toolErr = c.urlReaderService.GetURLContentAsText(urlString)
+							if toolErr != nil {
+								errorLogger.Printf("Error handling function call 'get_url_content' for URL %s: %v", urlString, toolErr)
+								toolResult = fmt.Sprintf("URL '%s' の内容取得中にエラー: %v", urlString, toolErr)
+								toolErr = nil // エラーは結果文字列に含めたので、ここではリセット
+							}
+						}
+					} else {
+						// 既存の天候情報関数の処理
+						toolResult, toolErr = c.weatherService.HandleFunctionCall(fn)
+						if toolErr != nil {
+							errorLogger.Printf("Error handling function call %s via WeatherService: %v", fn.Name, toolErr)
+							toolResult = fmt.Sprintf("関数の処理中にエラーが発生しました: %v", toolErr)
+							toolErr = nil
+						}
 					}
 				default:
 					errorLogger.Printf("Part %d is an unexpected type: %T", i, v)
@@ -181,20 +215,72 @@ HandleResponse:
 			}
 
 			if functionCallProcessed {
-				finalResponse := llmIntroText.String()
-				if finalResponse != "" && toolResult != "" {
-					if !strings.HasSuffix(finalResponse, "\n") {
-						finalResponse += "\n"
+				// Function Calling が実行された場合、その結果 (toolResult) を用いて
+				// LLMに再度問い合わせを行い、最終的な自然言語の応答を生成する。
+
+				// 呼び出された関数名を取得
+				var calledFuncName string
+				for _, part := range candidate.Content.Parts {
+					if fc, ok := part.(genai.FunctionCall); ok {
+						calledFuncName = fc.Name
+						break
 					}
 				}
-				finalResponse += toolResult
 
-				if finalResponse != "" {
-					c.historyMgr.Add(userID, threadID, message, finalResponse)
-				} else {
-					errorLogger.Printf("Skipping history add for user %s in thread %s because combined response is empty.", userID, threadID)
+				if calledFuncName == "" {
+					errorLogger.Printf("Could not determine called function name from candidate parts.")
+					return "関数呼び出し名の取得に失敗しました。", elapsed, modelCfg.ModelName, fmt.Errorf("関数呼び出し名の取得に失敗")
 				}
-				return finalResponse, 0, "zutool", nil
+
+				// 次のLLM呼び出しのためのpartsを構築する。
+				// 構成:
+				// 1. LLMの最初の応答 (FunctionCallを含む candidate.Content.Parts)
+				// 2. ツールの実行結果 (genai.FunctionResponse)
+				// ChatSessionを使用せず手動で会話のターンを模倣している。
+				var partsForNextTurn []genai.Part
+				partsForNextTurn = append(partsForNextTurn, candidate.Content.Parts...) // LLMの最初の応答
+
+				// LLMに渡すtoolResultの長さを制限
+				const maxToolResultForLLM = 1800
+				toolResultForLLM := toolResult
+				if len(toolResultForLLM) > maxToolResultForLLM {
+					toolResultForLLM = toolResultForLLM[:maxToolResultForLLM] + "..."
+				}
+
+				// ツールの実行結果をFunctionResponseとして追加
+				partsForNextTurn = append(partsForNextTurn, genai.FunctionResponse{
+					Name: calledFuncName,
+					Response: map[string]interface{}{
+						"content": toolResultForLLM,
+					},
+				})
+
+				// Function Callingの結果を踏まえて、再度LLMにコンテンツ生成を要求
+				secondResp, err := c.genaiModel.GenerateContent(ctx, partsForNextTurn...)
+				elapsed += float64(time.Since(start).Milliseconds()) // 時間を加算
+
+				if err != nil {
+					errorLogger.Printf("Error in second GenerateContent call after function execution: %v", err)
+					return fmt.Sprintf("ツールの実行結果: %s (LLMによる最終応答生成に失敗: %v)", toolResult, err), elapsed, modelCfg.ModelName, nil
+				}
+
+				finalResponseText := getResponseText(secondResp)
+				if finalResponseText == "" {
+					finalResponseText = "ツールは実行されましたが、LLMからの追加の応答はありませんでした。"
+					if toolResult != "" {
+						finalResponseText += fmt.Sprintf(" ツールの結果: %s", toolResult)
+					}
+				}
+
+				// (オプション) LLMからの導入テキストと最終応答を結合することも可能だが、現在はしていない。
+
+				// 最終応答があれば履歴に追加
+				if finalResponseText != "" {
+					c.historyMgr.Add(userID, threadID, message, finalResponseText)
+				} else {
+					errorLogger.Printf("Skipping history add for user %s in thread %s because finalResponseText is empty after function call.", userID, threadID)
+				}
+				return finalResponseText, elapsed, modelCfg.ModelName, nil
 			}
 
 			responseText := llmIntroText.String()

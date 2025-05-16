@@ -1,4 +1,23 @@
 ## 変更履歴
+- 2025/05/16: アプリケーション終了時のシグナルハンドリングを修正し、Ctrl+Cを1回で正常に停止するように改善。
+    - `main.go`: シグナルハンドリング処理をここに一本化。`discord.StartBot` のエラーハンドリングを修正。
+    - `discord/discord.go`: 不要なシグナルハンドリング処理を削除し、`StartBot` 関数がブロックし続けるように修正。
+- 2025/05/16: Webサイト閲覧機能 (Function Calling) のログ出力に関する改善。
+    - `chat/chat.go`:
+        - `curl` コマンド実行時のエラーログに出力される標準エラー出力の長さを制限。
+        - Function Calling の結果としてLLMに渡される、またログに出力されるWebサイトの抽出テキストの長さを適切な値に制限。
+        - ログに出力されるFunction Callingの各処理ステップの内容を、詳細な全文表示から概要表示に変更。
+        - ログに出力されるテキストから不要な空白文字（改行、タブ、連続スペースなど）を除去するように修正。
+    - `chat/url_reader_service.go`:
+        - `curl` コマンド実行時のエラーログに出力される標準エラー出力の長さを制限。
+        - Function Calling の結果として返される抽出テキストの最大長を短縮。
+    - `discord/url_reader_command.go`: (このファイルは以前の修正で削除されているため、実際には変更なし。ただし、関連機能のログ改善の一環として記載)
+        - `curl` コマンド実行時のエラーログに出力される標準エラー出力の長さを制限。(注: このファイルは 2025/05/16 の別タスクで削除済み)
+- 2025/05/16: URLの内容を読み取り要約する機能をFunction Callingとして実装。
+    - `chat/url_reader_service.go` を新規作成し、URL取得・パース処理を実装。
+    - `chat/chat.go` に `URLReaderService` を組み込み、`get_url_content` 関数をツールとして登録。Function Calling時の処理ロジックを修正。
+    - `chat/prompt.go` の `toolInstructions` に `get_url_content` 関数の説明を追加。
+    - 不要になった `/url-reader` スラッシュコマンド関連のコード (`discord/url_reader_command.go`, `discord/discord.go` および `discord/handler.go` の一部) を削除。
 - 2025/05/16: DuckDBの履歴管理機能を変更。履歴追加時に古いデータを削除せず全て保存し、履歴取得時に最新20ペアを返すように変更。
     - `history/duckdb_manager.go` の `Add` メソッドと `Get` メソッドを修正。
 - 2025/05/15: 不要になったSQLite関連のコードとドキュメントを削除。

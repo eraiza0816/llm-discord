@@ -16,6 +16,7 @@
 - 頭痛情報提供機能: ユーザーがメッセージに「頭痛」または「ずつう」と地名を含むと、`zu2l` API (`GetWeatherPoint`, `GetPainStatus`) を呼び出して頭痛情報を返します。
 - Otenki ASP情報提供機能: ユーザーがメッセージに「asp情報」と地点コードを含むと、`zu2l` API (`GetOtenkiASP`) を呼び出してOtenki ASP情報を返します。
 - 地点検索機能: ユーザーがメッセージに「地点検索」とキーワードを含むと、`zu2l` API (`GetWeatherPoint`) を呼び出して地点情報を返します。
+- URL内容理解機能: ユーザーが会話中にURLを提示すると、LLMがFunction Calling (`get_url_content`) を利用してURLの主要なテキストコンテンツを取得し、内容を理解した上で応答します。
 
 ## ドメインに関する用語（ユビキタス言語）
 
@@ -84,12 +85,12 @@
 ### ドメインサービス / アプリケーションサービス / インフラストラクチャサービス
 
 - ChatService (`chat/chat.go`, `chat/prompt.go`, `chat/utils.go`, `chat/ollama.go`)
-  - 役割: LLM (Gemini, Ollama) とのやり取り、および Gemini の Function Calling 機能のディスパッチを担当する。天気関連の Function Calling 処理は `WeatherService` に委譲する。
+  - 役割: LLM (Gemini, Ollama) とのやり取り、および Gemini の Function Calling 機能のディスパッチを担当する。天気関連の Function Calling 処理は `WeatherService` に、URL内容取得関連の Function Calling 処理は `URLReaderService` に委譲する。
   - 処理:
-    - `NewChat(token, historyMgr)` (`chat/chat.go`): Geminiクライアント、`HistoryManager`、`WeatherService` を初期化する。初期の Gemini モデル名は `model.json` から読み込むが、設定自体は保持しない。`WeatherService` から取得した Function Declaration を含む `Tool` を定義し、初期 Gemini モデルに設定する。
+    - `NewChat(token, historyMgr)` (`chat/chat.go`): Geminiクライアント、`HistoryManager`、`WeatherService`、`URLReaderService` を初期化する。初期の Gemini モデル名は `model.json` から読み込むが、設定自体は保持しない。`WeatherService` および `URLReaderService` から取得した Function Declaration を含む `Tool` を定義し、初期 Gemini モデルに設定する。
     - `GetResponse(userID, threadID, username, message, timestamp, prompt)` (`chat/chat.go`):
       1. `model.json` を読み込む。
-      2. `buildFullInput` (`chat/prompt.go`) を呼び出して、プロンプト、現在日時情報、ツール指示、履歴、ユーザーメッセージを結合した入力文字列を生成する。
+      2. `buildFullInput` (`chat/prompt.go`) を呼び出して、プロンプト、現在日時情報、ツール指示（`get_url_content` を含む）、履歴、ユーザーメッセージを結合した入力文字列を生成する。
       3. `model.json` の `ollama.enabled` が `true` の場合、`getOllamaResponse` を呼び出して Ollama にリクエストを送信する。
       4. `ollama.enabled` が `false` の場合、`model.json` の `model_name` を使用して Gemini にリクエストを送信する (`genaiModel.GenerateContent`)。
       5. Gemini API から 429 (Quota Exceeded) エラーが返された場合:
@@ -99,12 +100,13 @@
       6. Gemini からの応答 (`resp.Candidates[0].Content.Parts`) をループで確認する。
       7. 応答パーツの中に `genai.Text` 型が見つかった場合、その内容を `llmIntroText` バッファに追記する。
       5. 応答パーツの中に `genai.FunctionCall` 型が見つかった場合:
-         - `weatherService.HandleFunctionCall` を呼び出して、天気関連の Function Call 処理を委譲する。
+         - `fn.Name` が `get_url_content` の場合、`urlReaderService.GetURLContentAsText` を呼び出してURLの内容を取得する。
+         - それ以外の場合（天気関連など）、`weatherService.HandleFunctionCall` を呼び出して処理を委譲する。
          - `toolResult` に結果を格納し、`functionCallProcessed` フラグを立てる。（エラーハンドリングも含む）
       8. ループ終了後、`functionCallProcessed` が `true` の場合:
-         - `llmIntroText` (導入文) と `toolResult` (ツール実行結果) を結合する。
-         - 結合した応答を `historyMgr.Add` で履歴に追加する。
-         - 結合した応答を `return` する (source は "zutool")。
+         - `toolResult` を含む `FunctionResponse` を作成し、再度 `genaiModel.GenerateContent` を呼び出してLLMに最終的な応答を生成させる。
+         - 生成された応答を `historyMgr.Add` で履歴に追加する。
+         - 生成された応答を `return` する。
       9. `functionCallProcessed` が `false` の場合 (通常のテキスト応答):
          - `llmIntroText` を取得する (空の場合は `getResponseText` (`chat/utils.go`) でフォールバック)。
          - 応答を `historyMgr.Add` で履歴に追加する。
@@ -157,6 +159,7 @@
   - 処理:
     - `config.LoadConfig()`: 環境変数を読み込み、設定をロードする。
     - `discord.StartBot(cfg)`: Discord Botを起動する。
+    - アプリケーション終了のためのシグナルハンドリングを行う。
 
 - config/config.go:
   - 役割: 環境変数の読み込みと管理を行う。
@@ -190,6 +193,13 @@
   - 処理:
     - `getResponseText`: Gemini の応答からテキスト部分を抽出する。
 
+- chat/url_reader_service.go: (新規)
+  - 役割: `URLReaderService` の実装。URLの内容取得とテキスト抽出、および `get_url_content` Function Declaration の提供を担当する。
+  - 処理:
+    - `NewURLReaderService`: サービスの初期化。
+    - `GetURLContentAsText`: `curl` コマンドでURLの内容を取得し、`goquery` でHTMLをパースして主要なテキストを抽出する。
+    - `GetURLReaderFunctionDeclaration`: `get_url_content` 関数の定義を返す。
+
 - chat/ollama.go:
   - 役割: Ollama LLM との連携に関するロジックを担当。
   - 処理:
@@ -215,7 +225,7 @@
 - discord/discord.go:
   - 役割: Discord APIとのインターフェースを提供し、Botの起動、コマンド登録、リソース管理を行う。
   - 処理:
-    - `StartBot(cfg)`: Discord Botを起動し、`setupHandlers` を呼び出してハンドラとサービスを初期化する。起動シーケンス中の各ステップ（セッション作成、セッションオープン、コマンド登録、ハンドラ設定など）でエラーハンドリングを強化し、詳細なログを出力するように修正。`HistoryManager` および Discord セッション (`session`) の `Close` メソッドが、関数の正常終了時および異常終了時に `defer` を用いて確実に呼び出されるように修正し、リソースリークを防ぐ。
+    - `StartBot(cfg)`: Discord Botを起動し、`setupHandlers` を呼び出してハンドラとサービスを初期化する。起動シーケンス中の各ステップ（セッション作成、セッションオープン、コマンド登録、ハンドラ設定など）でエラーハンドリングを強化し、詳細なログを出力するように修正。`HistoryManager` および Discord セッション (`session`) の `Close` メソッドが、関数の正常終了時および異常終了時に `defer` を用いて確実に呼び出されるように修正し、リソースリークを防ぐ。main.goからのシグナルにより終了処理が行われるまでブロックし続ける。
 
 - loader/model.go:
   - 役割: `model.json` の読み込み処理と構造体定義を行う。

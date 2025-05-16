@@ -5,10 +5,9 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/eraiza0816/llm-discord/chat" // chat パッケージをインポート
 	"github.com/eraiza0816/llm-discord/config"
 	"github.com/eraiza0816/llm-discord/history"
 )
@@ -100,9 +99,10 @@ func StartBot(cfg *config.Config) error {
 	// log.Printf("Registered commands: %v", registeredCommands)
 
 
-	// setupHandlers から history.HistoryManager を受け取る
+	// setupHandlers から history.HistoryManager と chat.Service を受け取る
 	var historyMgr history.HistoryManager
-	historyMgr, err = setupHandlers(session, cfg.GeminiAPIKey)
+	var chatSvc chat.Service // chat.Service 型の変数を宣言
+	historyMgr, chatSvc, err = setupHandlers(session, cfg.GeminiAPIKey) // chatSvc も受け取る
 	if err != nil {
 		log.Printf("Error in setupHandlers: %v", err)
 		return fmt.Errorf("ハンドラの設定中にエラーが発生しました: %w", err)
@@ -118,6 +118,14 @@ func StartBot(cfg *config.Config) error {
 		}()
 	}
 
+	// ChatService のクローズ処理
+	if chatSvc != nil {
+		defer func() {
+			log.Println("Closing ChatService via defer in StartBot...")
+			chatSvc.Close() // Closeメソッドを呼び出す
+		}()
+	}
+
 	session.AddHandler(func(s *discordgo.Session, r *discordgo.Ready) {
 		log.Println("Discord Ready event received.")
 		if r.User != nil {
@@ -127,12 +135,9 @@ func StartBot(cfg *config.Config) error {
 		}
 	})
 
-	log.Println("Bot setup complete. Waiting for signals...")
-	sc := make(chan os.Signal, 1)
-	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
-	receivedSignal := <-sc
-	log.Printf("Received signal: %v. Shutting down.", receivedSignal)
-
+	log.Println("Bot setup complete. Waiting for signals from main.")
 	// session.Close() はこの関数の冒頭で defer されているため、ここでは不要
-	return nil
+
+	// main.goからのシグナルで適切に終了処理が行われるよう、ここではブロックし続ける
+	select {}
 }
