@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/eraiza0816/llm-discord/config"
 	"github.com/eraiza0816/llm-discord/history"
 	"github.com/eraiza0816/llm-discord/loader"
 
@@ -27,13 +28,14 @@ type Chat struct {
 	genaiClient    *genai.Client
 	genaiModel       *genai.GenerativeModel
 	weatherService   WeatherService
-	urlReaderService *URLReaderService // URLReaderServiceを追加
+	urlReaderService *URLReaderService
 	defaultPrompt    string
 	historyMgr       history.HistoryManager
 	tools            []*genai.Tool
+	modelConfig      *loader.ModelConfig
 }
 
-func NewChat(token string, historyMgr history.HistoryManager) (Service, error) {
+func NewChat(cfg *config.Config, historyMgr history.HistoryManager) (Service, error) {
 	errorLogFile, err := os.OpenFile("log/error.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
 	if err != nil {
 		log.Printf("Failed to open error log file: %v", err)
@@ -42,24 +44,20 @@ func NewChat(token string, historyMgr history.HistoryManager) (Service, error) {
 		errorLogger = log.New(errorLogFile, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
 	}
 
-	initialModelCfg, err := loader.LoadModelConfig("json/model.json")
-	if err != nil {
-		errorLogger.Printf("初期 model.json の読み込みに失敗しました: %v", err)
-		return nil, fmt.Errorf("初期 model.json の読み込みに失敗しました: %w", err)
-	}
+	initialModelCfg := cfg.Model
 	initialGeminiModelName := initialModelCfg.ModelName
 
-	genaiClient, err := genai.NewClient(context.Background(), option.WithAPIKey(token))
+	genaiClient, err := genai.NewClient(context.Background(), option.WithAPIKey(cfg.GeminiAPIKey))
 	if err != nil {
 		return nil, fmt.Errorf("Geminiクライアントの作成に失敗: %w", err)
 	}
 	genaiModel := genaiClient.GenerativeModel(initialGeminiModelName)
 
 	weatherService := NewWeatherService()
-	urlReaderService := NewURLReaderService() // URLReaderServiceを初期化
+	urlReaderService := NewURLReaderService()
 
 	weatherFuncDeclarations := weatherService.GetFunctionDeclarations()
-	urlReaderFuncDeclaration := GetURLReaderFunctionDeclaration() // URLリーダーの関数宣言を取得
+	urlReaderFuncDeclaration := GetURLReaderFunctionDeclaration()
 
 	var allDeclarations []*genai.FunctionDeclaration
 	// weatherFuncDeclarations が nil でなく、要素を持つ場合のみ追加
@@ -89,15 +87,12 @@ func NewChat(token string, historyMgr history.HistoryManager) (Service, error) {
 		urlReaderService: urlReaderService,
 		historyMgr:       historyMgr,
 		tools:            tools,
+		modelConfig:      initialModelCfg, // 初期化時にModelConfigを保存
 	}, nil
 }
 
 func (c *Chat) GetResponse(userID, threadID, username, message, timestamp, prompt string) (string, float64, string, error) {
-	modelCfg, err := loader.LoadModelConfig("json/model.json")
-	if err != nil {
-		errorLogger.Printf("Error loading model config in GetResponse: %v", err)
-		return "", 0, "", fmt.Errorf("設定ファイルの読み込みに失敗しました: %w", err)
-	}
+	modelCfg := c.modelConfig // 保存されたModelConfigを使用
 
 	// prompt.go の buildFullInput を使用して、LLMへの完全な入力文字列を構築
 	fullInput := buildFullInput(prompt, message, c.historyMgr, userID, threadID, timestamp)
@@ -139,7 +134,6 @@ func (c *Chat) GetResponse(userID, threadID, username, message, timestamp, promp
 
 				if err == nil {
 					log.Printf("Successfully generated content with secondary model: %s", modelCfg.SecondaryModelName)
-					modelCfg.ModelName = modelCfg.SecondaryModelName
 					goto HandleResponse
 				}
 				errorLogger.Printf("Secondary Gemini API call failed for model %s: %v", modelCfg.SecondaryModelName, err)
@@ -149,7 +143,6 @@ func (c *Chat) GetResponse(userID, threadID, username, message, timestamp, promp
 
 			if modelCfg.Ollama.Enabled {
 				log.Printf("Falling back to Ollama (%s) for user %s in thread %s", modelCfg.Ollama.ModelName, userID, threadID)
-				// ollama.go の getOllamaResponse を使用してOllamaからの応答を取得 (フォールバック)
 				responseText, ollamaElapsed, ollamaErr := c.getOllamaResponse(userID, threadID, message, fullInput, modelCfg.Ollama)
 				if ollamaErr != nil {
 					errorLogger.Printf("Ollama fallback failed for user %s in thread %s: %v", userID, threadID, ollamaErr)

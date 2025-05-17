@@ -1,4 +1,9 @@
 ## 変更履歴
+- 2025/05/18: `model.json` の動的読み込みを廃止し、起動時に一度だけ読み込むように変更。
+    - `config/config.go`: `Config` 構造体に `Model` フィールドを追加し、`LoadConfig` で `model.json` を読み込むように変更。
+    - `chat/chat.go`: `NewChat` で `config.Config` を受け取り、保持している `ModelConfig` を使用するように変更。`GetResponse` での `model.json` の都度読み込みを削除。
+    - `discord/handler.go`: `setupHandlers` と各コマンドハンドラ (`chatCommandHandler`, `aboutCommandHandler`) が `config.Config` を受け取り、そこから `ModelConfig` を利用するように変更。
+    - `discord/discord.go`: `StartBot` で `setupHandlers` に `config.Config` を渡すように変更。
 - 2025/05/16: 監査ログから `edited_timestamp` を削除し、`timestamp` に統一。
     - `history/audit_log.go`: `AuditLogEntry` 構造体から `EditedTimestamp` フィールドを削除し、`LogMessageUpdate` 関数を修正。
     - `discord/handler.go`: `LogMessageUpdate` 関数の呼び出し箇所を修正。

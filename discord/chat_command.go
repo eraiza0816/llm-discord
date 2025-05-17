@@ -7,16 +7,11 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/eraiza0816/llm-discord/chat"
-	"github.com/eraiza0816/llm-discord/loader"
+	"github.com/eraiza0816/llm-discord/config"
 )
 
-func chatCommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate, chatSvc chat.Service, threadID string) {
-	modelCfg, err := loader.LoadModelConfig("json/model.json")
-	if err != nil {
-		log.Printf("Error loading model config: %v", err)
-		sendEphemeralErrorResponse(s, i, fmt.Errorf("設定ファイルの読み込みに失敗しました: %w", err))
-		return
-	}
+func chatCommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate, chatSvc chat.Service, threadID string, cfg *config.Config) {
+	modelCfg := cfg.Model
 
 	username := i.Member.User.Username
 	message := i.ApplicationCommandData().Options[0].StringValue()

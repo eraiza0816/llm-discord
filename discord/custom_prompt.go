@@ -8,7 +8,6 @@ import (
 	"sync"
 )
 
-
 const customPromptFilePath = "json/custom_model.json"
 
 var customPromptMutex sync.Mutex

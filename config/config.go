@@ -6,12 +6,14 @@ import (
 	"os"
 	"strings"
 
+	"github.com/eraiza0816/llm-discord/loader"
 	"github.com/joho/godotenv"
 )
 
 type Config struct {
 	DiscordBotToken string
 	GeminiAPIKey    string
+	Model           *loader.ModelConfig
 }
 
 func LoadConfig() (*Config, error) {
@@ -34,8 +36,14 @@ func LoadConfig() (*Config, error) {
 		return nil, errors.New("以下の環境変数が設定されていません: " + strings.Join(missingVars, ", "))
 	}
 
+	modelCfg, err := loader.LoadModelConfig("json/model.json")
+	if err != nil {
+		return nil, fmt.Errorf("model.json の読み込みに失敗しました: %w", err)
+	}
+
 	return &Config{
 		DiscordBotToken: token,
 		GeminiAPIKey:    geminiAPIKey,
+		Model:           modelCfg,
 	}, nil
 }

@@ -1,20 +1,14 @@
 package discord
 
 import (
-	"fmt"
 	"log"
 
 	"github.com/bwmarrin/discordgo"
-	"github.com/eraiza0816/llm-discord/loader"
+	"github.com/eraiza0816/llm-discord/config"
 )
 
-func aboutCommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	modelCfg, err := loader.LoadModelConfig("json/model.json")
-	if err != nil {
-		log.Printf("Error loading model config: %v", err)
-		sendEphemeralErrorResponse(s, i, fmt.Errorf("設定ファイルの読み込みに失敗しました: %w", err))
-		return
-	}
+func aboutCommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *config.Config) { // cfg パラメータを追加
+	modelCfg := cfg.Model
 
 	username := i.Member.User.Username
 	log.Printf("User %s performed an about operation.", username)
@@ -33,10 +27,10 @@ func aboutCommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		Color:       0xa8ffee,
 	}
 
-	_, err = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+	_, editErr := s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
 		Embeds: &[]*discordgo.MessageEmbed{embed},
 	})
-	if err != nil {
-		log.Printf("InteractionResponseEdit error: %v", err)
+	if editErr != nil {
+		log.Printf("InteractionResponseEdit error: %v", editErr)
 	}
 }

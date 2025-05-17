@@ -9,17 +9,18 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/eraiza0816/llm-discord/chat"
+	"github.com/eraiza0816/llm-discord/config"
 	"github.com/eraiza0816/llm-discord/history"
 )
 
-func setupHandlers(s *discordgo.Session, geminiAPIKey string) (history.HistoryManager, chat.Service, error) {
+func setupHandlers(s *discordgo.Session, cfg *config.Config) (history.HistoryManager, chat.Service, error) {
 	historyMgr, err := history.NewDuckDBHistoryManager()
 	if err != nil {
 		log.Printf("DuckDBHistoryManager の初期化に失敗しました: %v", err)
 		return nil, nil, fmt.Errorf("DuckDBHistoryManager の初期化に失敗しました: %w", err)
 	}
 
-	chatSvc, err := chat.NewChat(geminiAPIKey, historyMgr)
+	chatSvc, err := chat.NewChat(cfg, historyMgr)
 	if err != nil {
 		if cerr, ok := err.(interface{ Unwrap() error }); ok && cerr.Unwrap() != nil {
 			log.Printf("Chat サービスの初期化に失敗しました: %v (underlying: %v)", err, cerr.Unwrap())
@@ -97,11 +98,11 @@ func setupHandlers(s *discordgo.Session, geminiAPIKey string) (history.HistoryMa
 
 		switch i.ApplicationCommandData().Name {
 		case "chat":
-			chatCommandHandler(s, i, chatSvc, threadID)
+			chatCommandHandler(s, i, chatSvc, threadID, cfg) // cfgを渡す
 		case "reset":
 			resetCommandHandler(s, i, historyMgr, threadID)
 		case "about":
-			aboutCommandHandler(s, i)
+			aboutCommandHandler(s, i, cfg) // cfgを渡す
 		case "edit":
 			editCommandHandler(s, i, chatSvc)
 		}
