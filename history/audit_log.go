@@ -73,8 +73,9 @@ func LogMessageCreate(messageID, channelID, guildID, userID, userName, content s
 	return writeAuditLogEntry(entry)
 }
 
-func LogMessageUpdate(messageID, content string) error {
+func LogMessageUpdate(messageID, content string, updateTimestamp time.Time) error {
 	entry := AuditLogEntry{
+		Timestamp: updateTimestamp,
 		MessageID: messageID,
 		Content:   content,
 		EventType: "update",

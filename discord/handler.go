@@ -143,9 +143,15 @@ func messageUpdateHandler(s *discordgo.Session, m *discordgo.MessageUpdate) {
 		return
 	}
 
+	if m.EditedTimestamp == nil {
+		log.Printf("EditedTimestamp is nil, skipping update log for MessageID: %s", m.ID)
+		return
+	}
+
 	updateErr := history.LogMessageUpdate(
 		m.ID,
 		m.Content,
+		*m.EditedTimestamp,
 	)
 	if updateErr != nil {
 		log.Printf("Failed to log message update event: %v", updateErr)
