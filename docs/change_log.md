@@ -1,4 +1,6 @@
 ## 変更履歴
+- 2025/05/18: Botが現在日時を正しく認識できるように修正（再修正）。
+    - `chat/prompt.go`: `buildFullInput` 関数で、日時情報をシステムプロンプトの直後に挿入するように変更。
 - 2025/05/18: `model.json` の動的読み込みを廃止し、起動時に一度だけ読み込むように変更。
     - `config/config.go`: `Config` 構造体に `Model` フィールドを追加し、`LoadConfig` で `model.json` を読み込むように変更。
     - `chat/chat.go`: `NewChat` で `config.Config` を受け取り、保持している `ModelConfig` を使用するように変更。`GetResponse` での `model.json` の都度読み込みを削除。
