@@ -4,16 +4,14 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"os"
 
 	"github.com/bwmarrin/discordgo"
-	"github.com/eraiza0816/llm-discord/chat" // chat パッケージをインポート
+	"github.com/eraiza0816/llm-discord/chat"
 	"github.com/eraiza0816/llm-discord/config"
 	"github.com/eraiza0816/llm-discord/history"
 )
 
 func StartBot(cfg *config.Config) error {
-	log.SetOutput(os.Stdout)
 	log.Println("StartBot called")
 	if cfg == nil {
 		return errors.New("Config is nil")
@@ -94,10 +92,7 @@ func StartBot(cfg *config.Config) error {
 			continue
 		}
 		registeredCommands[i] = cmd
-		// log.Printf("Successfully created '%v' command.", cmd.Name)
 	}
-	// log.Printf("Registered commands: %v", registeredCommands)
-
 
 	// setupHandlers から history.HistoryManager と chat.Service を受け取る
 	var historyMgr history.HistoryManager
@@ -125,15 +120,6 @@ func StartBot(cfg *config.Config) error {
 			chatSvc.Close() // Closeメソッドを呼び出す
 		}()
 	}
-
-	session.AddHandler(func(s *discordgo.Session, r *discordgo.Ready) {
-		log.Println("Discord Ready event received.")
-		if r.User != nil {
-			log.Printf("Bot is ready! Logged in as %s#%s", r.User.Username, r.User.Discriminator)
-		} else {
-			log.Println("Bot is ready, but r.User is nil.")
-		}
-	})
 
 	log.Println("Bot setup complete. Waiting for signals from main.")
 	// session.Close() はこの関数の冒頭で defer されているため、ここでは不要
