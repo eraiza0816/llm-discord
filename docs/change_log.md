@@ -15,7 +15,7 @@
         - `curl` コマンド実行時のエラーログに出力される標準エラー出力の長さを制限。
         - Function Calling の結果として返される抽出テキストの最大長を短縮。
     - `discord/url_reader_command.go`: (このファイルは以前の修正で削除されているため、実際には変更なし。ただし、関連機能のログ改善の一環として記載)
-        - `curl` コマンド実行時のエラーログに出力される標準エラー出力の長さを制限。(注: このファイルは 2025/05/16 の別タスクで削除済み)
+        - `curl` コマンド実行時のエラーログに出力される標準エラー出力の長さを制限。
 - 2025/05/16: URLの内容を読み取り要約する機能をFunction Callingとして実装。
     - `chat/url_reader_service.go` を新規作成し、URL取得・パース処理を実装。
     - `chat/chat.go` に `URLReaderService` を組み込み、`get_url_content` 関数をツールとして登録。Function Calling時の処理ロジックを修正。

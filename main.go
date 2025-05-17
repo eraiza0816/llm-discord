@@ -20,16 +20,9 @@ func main() {
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
-		return
-	}
-
-	if cfg == nil {
-		log.Fatalf("Config is nil")
-		return
 	}
 
 	if err := discord.StartBot(cfg); err != nil {
-		// log.Fatalf から log.Printf に変更し、エラー発生後もシグナル待機に進むようにする
 		log.Printf("Bot error: %v", err)
 	}
 

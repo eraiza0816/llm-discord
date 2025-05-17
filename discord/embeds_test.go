@@ -14,7 +14,7 @@ func TestSplitToEmbedFields(t *testing.T) {
 		name           string
 		inputText      string
 		expectedNumFields int
-		expectedValues []string // 各フィールドの期待される値（最初の数フィールドをチェック）
+		expectedValues []string
 	}{
 		{
 			name:           "Empty string",

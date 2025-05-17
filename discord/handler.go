@@ -13,9 +13,6 @@ import (
 )
 
 func setupHandlers(s *discordgo.Session, geminiAPIKey string) (history.HistoryManager, chat.Service, error) {
-	const defaultMaxHistorySize = 20
-	const dbPath = "data"
-
 	historyMgr, err := history.NewDuckDBHistoryManager()
 	if err != nil {
 		log.Printf("DuckDBHistoryManager の初期化に失敗しました: %v", err)
@@ -32,7 +29,8 @@ func setupHandlers(s *discordgo.Session, geminiAPIKey string) (history.HistoryMa
 		return nil, nil, fmt.Errorf("Chat サービスの初期化に失敗しました: %w", err)
 	}
 
-	errorLogger := chat.GetErrorLogger() // chat.GetErrorLogger() は chat.Service に関連付けられていないグローバルなものかもしれない
+	// chat パッケージと discord パッケージでエラーロガーを共有
+	errorLogger := chat.GetErrorLogger()
 	SetErrorLogger(errorLogger)
 
 	err = os.MkdirAll("log", 0755)
@@ -105,7 +103,7 @@ func setupHandlers(s *discordgo.Session, geminiAPIKey string) (history.HistoryMa
 		case "about":
 			aboutCommandHandler(s, i)
 		case "edit":
-			editCommandHandler(s, i, chatSvc) // chatSvc は chat.Service 型
+			editCommandHandler(s, i, chatSvc)
 		}
 	})
 	return historyMgr, chatSvc, nil
