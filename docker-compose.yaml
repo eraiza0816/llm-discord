@@ -1,0 +1,10 @@
+services:
+  promtail:
+    image: grafana/promtail:2.9.0
+    container_name: promtail_audit
+    volumes:
+      - ./promtail-config.yaml:/etc/promtail/config.yaml
+      - ./data:/mnt/logs:ro
+    command: -config.file=/etc/promtail/config.yaml
+    restart: unless-stopped
+    network_mode: host

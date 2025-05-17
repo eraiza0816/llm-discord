@@ -6,6 +6,3 @@ json/custom_model.json
 llm-discord
 data/*
 docs/audit.md
-docker-compose.yaml
-grafana-dashboard.json
-promtail-config.yaml
