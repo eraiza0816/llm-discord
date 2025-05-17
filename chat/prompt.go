@@ -13,11 +13,11 @@ func buildFullInput(systemPrompt, userMessage string, historyMgr history.History
 	toolInstructions := `
 【Function Calling Rules】
 You can use the following tools (functions). Select the appropriate function based on the user's request and return a FunctionCall.
-- getWeather: 「天気」について、地名（例：「東京」、「大阪市」）で質問された場合に使います。地点コードでは使いません。
-- getPainStatus: 「頭痛」や「ずつう」について、地名（例：「横浜」）で質問された場合に使います。地点コードでは使いません。
-- searchWeatherPoint: 「地点コード」を知りたい、または地名を検索したい場合に使います。キーワード（地名など）が必要です。
-- getOtenkiAspInfo: 「Otenki ASP」の情報について、地点コード（例：「13112」）で質問された場合に使います。地名では使いません。
-- get_url_content: 指定されたURLの主要なテキストコンテンツを取得します。ユーザーがURLについて言及したり、ウェブページの内容を知りたい場合に利用します。
+- getWeather: Use when asked about "weather" with a place name (e.g., "Tokyo", "Osaka City"). Do not use with a location code.
+- getPainStatus: Use when asked about "headache" or "zutsuu" with a place name (e.g., "Yokohama"). Do not use with a location code.
+- searchWeatherPoint: Use when you want to know the "location code" or search for a place name. A keyword (place name, etc.) is required.
+- getOtenkiAspInfo: Use when asked about "Otenki ASP" information with a location code (e.g., "13112"). Do not use with a place name.
+- get_url_content: Retrieves the main text content of the specified URL. Use when the user mentions a URL or wants to know the content of a web page.
 `
 	historyText := ""
 	if historyMgr != nil {
