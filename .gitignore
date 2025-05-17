@@ -1,5 +1,4 @@
 .env
-.venv/
 log/*.log
 json/model.json
 json/custom_model.json

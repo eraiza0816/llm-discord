@@ -1,0 +1,15 @@
+.env
+log/*.log
+json/model.json
+json/custom_model.json
+llm-discord
+data/*
+docs/audit.md
+
+.editorconfig
+.env.sample
+go.sum
+grafana-dashboard.json
+llm-discotd.service
+docker-compose.yaml
+README.md
