@@ -157,7 +157,11 @@ func (c *Chat) GetResponse(userID, threadID, username, message, timestamp, promp
 			return "", elapsed, modelCfg.ModelName, fmt.Errorf("Gemini APIクォータ超過、フォールバック先なし: %w", err)
 
 		} else {
-			errorLogger.Printf("Gemini API error for model %s: %v", modelCfg.ModelName, err)
+			logMessage := fmt.Sprintf("Gemini API error for model %s. Input: %s, Error: %v", modelCfg.ModelName, fullInput, err)
+			if gapiErr, ok := err.(*googleapi.Error); ok {
+				logMessage += fmt.Sprintf(", API Error Body: %s, API Error Headers: %v", gapiErr.Body, gapiErr.Header)
+			}
+			errorLogger.Printf(logMessage)
 			return "", elapsed, modelCfg.ModelName, fmt.Errorf("Gemini APIからのエラー: %w", err)
 		}
 	}
