@@ -44,7 +44,6 @@ func NewDuckDBHistoryManager() (*DuckDBHistoryManager, error) {
 }
 
 func (m *DuckDBHistoryManager) Add(userID, threadID, message, response string) error {
-	// まず、現在の全履歴を取得する
 	var currentHistoryJSON string
 	querySQL := "SELECT history_json FROM thread_histories WHERE user_id = ? AND thread_id = ?;"
 	err := m.db.QueryRow(querySQL, userID, threadID).Scan(&currentHistoryJSON)
@@ -52,13 +51,11 @@ func (m *DuckDBHistoryManager) Add(userID, threadID, message, response string) e
 	var history []HistoryMessage
 	if err != nil {
 		if err == sql.ErrNoRows {
-			// 履歴が見つからない場合は新しい履歴を作成
 			history = []HistoryMessage{}
 		} else {
 			return fmt.Errorf("既存履歴のクエリ実行に失敗しました: %w", err)
 		}
 	} else {
-		// 既存の履歴をデシリアライズ
 		if err := json.Unmarshal([]byte(currentHistoryJSON), &history); err != nil {
 			return fmt.Errorf("既存履歴のJSONデシリアライズに失敗しました: %w", err)
 		}
@@ -67,7 +64,6 @@ func (m *DuckDBHistoryManager) Add(userID, threadID, message, response string) e
 	history = append(history, HistoryMessage{Role: "user", Content: message})
 	history = append(history, HistoryMessage{Role: "model", Content: response})
 
-	// 全ての履歴をJSONとしてシリアライズ
 	historyJSON, err := json.Marshal(history)
 	if err != nil {
 		return fmt.Errorf("履歴のJSONシリアライズに失敗しました: %w", err)
@@ -108,15 +104,14 @@ func (m *DuckDBHistoryManager) Get(userID, threadID string) ([]HistoryMessage, e
 	}
 
 	// 最新20ペアを抽出する
-	maxHistorySizeToReturn := 20 // 返却する最大履歴ペア数
+	maxHistorySizeToReturn := 20
 	if len(fullHistory) > maxHistorySizeToReturn*2 {
 		return fullHistory[len(fullHistory)-maxHistorySizeToReturn*2:], nil
 	}
 
-	return fullHistory, nil // 20ペア以下の場合はそのまま全件返す
+	return fullHistory, nil
 }
 
-// Clear は指定されたユーザーとスレッドの履歴をクリアします。
 func (m *DuckDBHistoryManager) Clear(userID, threadID string) error {
 	deleteSQL := "DELETE FROM thread_histories WHERE user_id = ? AND thread_id = ?;"
 	result, err := m.db.Exec(deleteSQL, userID, threadID)
@@ -125,7 +120,7 @@ func (m *DuckDBHistoryManager) Clear(userID, threadID string) error {
 	}
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		log.Printf("削除された行数の取得に失敗しました: %v", err) // エラーログは出すが、処理は続行
+		log.Printf("削除された行数の取得に失敗しました: %v", err)
 	}
 	if rowsAffected == 0 {
 		log.Printf("ユーザー %s のスレッド %s の履歴は見つからなかったため、削除されませんでした。", userID, threadID)
@@ -133,7 +128,6 @@ func (m *DuckDBHistoryManager) Clear(userID, threadID string) error {
 	return nil
 }
 
-// ClearAllByThreadID は指定されたスレッドの全ユーザーの履歴をクリアします。
 func (m *DuckDBHistoryManager) ClearAllByThreadID(threadID string) error {
 	deleteSQL := "DELETE FROM thread_histories WHERE thread_id = ?;"
 	result, err := m.db.Exec(deleteSQL, threadID)
@@ -152,7 +146,6 @@ func (m *DuckDBHistoryManager) ClearAllByThreadID(threadID string) error {
 	return nil
 }
 
-// Close はデータベース接続を閉じます。
 func (m *DuckDBHistoryManager) Close() error {
 	if m.db != nil {
 		log.Println("DuckDBデータベース接続を閉じます。")
