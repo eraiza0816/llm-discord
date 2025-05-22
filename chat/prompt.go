@@ -16,7 +16,7 @@ You can use the following tools (functions). Select the appropriate function bas
 - getWeather: Use when asked about "weather" with a place name (e.g., "Tokyo", "Osaka City"). Do not use with a location code.
 - getPainStatus: Use when asked about "headache" or "zutsuu" with a place name (e.g., "Yokohama"). Do not use with a location code.
 - searchWeatherPoint: Use when you want to know the "location code" or search for a place name. A keyword (place name, etc.) is required.
-- getOtenkiAspInfo: Use when asked about "Otenki ASP" information with a location code (e.g., "13112"). Do not use with a place name.
+- getOtenkiAspInfo: Use when asked about "Otenki ASP" information with a location code (e.g., "13101"). Do not use with a place name.
 - get_url_content: Retrieves the main text content of the specified URL. Use when the user mentions a URL or wants to know the content of a web page.
 `
 	historyText := ""
