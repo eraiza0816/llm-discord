@@ -28,7 +28,6 @@ type Chat struct {
 	genaiClient    *genai.Client
 	genaiModel       *genai.GenerativeModel
 	weatherService   WeatherService
-	urlReaderService *URLReaderService
 	defaultPrompt    string
 	historyMgr       history.HistoryManager
 	tools            []*genai.Tool
@@ -54,19 +53,13 @@ func NewChat(cfg *config.Config, historyMgr history.HistoryManager) (Service, er
 	genaiModel := genaiClient.GenerativeModel(initialGeminiModelName)
 
 	weatherService := NewWeatherService()
-	urlReaderService := NewURLReaderService()
 
 	weatherFuncDeclarations := weatherService.GetFunctionDeclarations()
-	urlReaderFuncDeclaration := GetURLReaderFunctionDeclaration()
 
 	var allDeclarations []*genai.FunctionDeclaration
 	// weatherFuncDeclarations が nil でなく、要素を持つ場合のみ追加
 	if len(weatherFuncDeclarations) > 0 {
 		allDeclarations = append(allDeclarations, weatherFuncDeclarations...)
-	}
-	// urlReaderFuncDeclaration が nil でない場合のみ追加
-	if urlReaderFuncDeclaration != nil {
-		allDeclarations = append(allDeclarations, urlReaderFuncDeclaration)
 	}
 
 	var tools []*genai.Tool
@@ -84,15 +77,14 @@ func NewChat(cfg *config.Config, historyMgr history.HistoryManager) (Service, er
 		genaiClient:      genaiClient,
 		genaiModel:       genaiModel,
 		weatherService:   weatherService,
-		urlReaderService: urlReaderService,
 		historyMgr:       historyMgr,
 		tools:            tools,
-		modelConfig:      initialModelCfg, // 初期化時にModelConfigを保存
+		modelConfig:      initialModelCfg,
 	}, nil
 }
 
 func (c *Chat) GetResponse(userID, threadID, username, message, timestamp, prompt string) (string, float64, string, error) {
-	modelCfg := c.modelConfig // 保存されたModelConfigを使用
+	modelCfg := c.modelConfig
 
 	// prompt.go の buildFullInput を使用して、LLMへの完全な入力文字列を構築
 	fullInput := buildFullInput(prompt, message, c.historyMgr, userID, threadID, timestamp)
@@ -183,28 +175,12 @@ HandleResponse:
 					fn := v
 					functionCallProcessed = true
 
-					if fn.Name == "get_url_content" {
-						// URLリーダー関数の処理
-						urlString, ok := fn.Args["url"].(string)
-						if !ok {
-							toolResult = "URLが正しく指定されていません。"
-							errorLogger.Printf("Function call 'get_url_content' missing or invalid 'url' argument: %v", fn.Args)
-						} else {
-							toolResult, toolErr = c.urlReaderService.GetURLContentAsText(urlString)
-							if toolErr != nil {
-								errorLogger.Printf("Error handling function call 'get_url_content' for URL %s: %v", urlString, toolErr)
-								toolResult = fmt.Sprintf("URL '%s' の内容取得中にエラー: %v", urlString, toolErr)
-								toolErr = nil // エラーは結果文字列に含めたので、ここではリセット
-							}
-						}
-					} else {
-						// 既存の天候情報関数の処理
-						toolResult, toolErr = c.weatherService.HandleFunctionCall(fn)
-						if toolErr != nil {
-							errorLogger.Printf("Error handling function call %s via WeatherService: %v", fn.Name, toolErr)
-							toolResult = fmt.Sprintf("関数の処理中にエラーが発生しました: %v", toolErr)
-							toolErr = nil
-						}
+					// 既存の天候情報関数の処理
+					toolResult, toolErr = c.weatherService.HandleFunctionCall(fn)
+					if toolErr != nil {
+						errorLogger.Printf("Error handling function call %s via WeatherService: %v", fn.Name, toolErr)
+						toolResult = fmt.Sprintf("関数の処理中にエラーが発生しました: %v", toolErr)
+						toolErr = nil
 					}
 				default:
 					errorLogger.Printf("Part %d is an unexpected type: %T", i, v)
@@ -235,7 +211,7 @@ HandleResponse:
 				// 2. ツールの実行結果 (genai.FunctionResponse)
 				// ChatSessionを使用せず手動で会話のターンを模倣している。
 				var partsForNextTurn []genai.Part
-				partsForNextTurn = append(partsForNextTurn, candidate.Content.Parts...) // LLMの最初の応答
+				partsForNextTurn = append(partsForNextTurn, candidate.Content.Parts...)
 
 				// LLMに渡すtoolResultの長さを制限
 				const maxToolResultForLLM = 1800
@@ -300,7 +276,7 @@ HandleResponse:
 	}
 
 	errorLogger.Println("No valid candidates found in Gemini response.")
-	responseText := "すみません、応答を取得できませんでした。"
+	responseText := "応答を取得できませんでした。"
 	return responseText, elapsed, modelCfg.ModelName, nil
 }
 

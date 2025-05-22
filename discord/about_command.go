@@ -8,6 +8,29 @@ import (
 )
 
 func aboutCommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *config.Config) { // cfg パラメータを追加
+	if cfg == nil {
+		log.Println("Error in aboutCommandHandler: cfg is nil")
+		// エラーレスポンスをユーザーに返すことも検討
+		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: "設定情報が読み込めませんでした。管理者に連絡してください。",
+				Flags:   discordgo.MessageFlagsEphemeral,
+			},
+		})
+		return
+	}
+	if cfg.Model == nil {
+		log.Println("Error in aboutCommandHandler: cfg.Model is nil")
+		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: "モデル設定が読み込めませんでした。管理者に連絡してください。",
+				Flags:   discordgo.MessageFlagsEphemeral,
+			},
+		})
+		return
+	}
 	modelCfg := cfg.Model
 
 	username := i.Member.User.Username

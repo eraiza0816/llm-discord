@@ -120,7 +120,7 @@ func parseOllamaStreamResponse(reader *bufio.Reader) (string, string, error) {
 
 		var result map[string]interface{}
 		if err := json.Unmarshal([]byte(trimmedLine), &result); err != nil {
-			log.Printf("Ollamaレスポンス行のJSON解析に失敗（スキップ）: %v, line: %s", err, trimmedLine)
+			log.Printf("Ollamaレスポンス行のJSON解析に失敗: %v, line: %s", err, trimmedLine)
 			continue
 		}
 

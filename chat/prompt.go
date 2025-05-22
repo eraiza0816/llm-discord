@@ -23,7 +23,6 @@ You can use the following tools (functions). Select the appropriate function bas
 	if historyMgr != nil {
 		messages, err := historyMgr.Get(userID, threadID)
 		if err != nil {
-			// 履歴取得エラーはログに出力するが、処理は続行（履歴なしとして扱う）
 			log.Printf("ユーザー %s のスレッド %s の履歴取得に失敗しました: %v", userID, threadID, err)
 		} else {
 			var historyParts []string
