@@ -13,25 +13,35 @@ import (
 	"github.com/eraiza0816/llm-discord/history"
 )
 
-func setupHandlers(s *discordgo.Session, cfg *config.Config) (history.HistoryManager, chat.Service, error) {
-	historyMgr, err := history.NewDuckDBHistoryManager()
-	if err != nil {
-		log.Printf("DuckDBHistoryManager の初期化に失敗しました: %v", err)
-		return nil, nil, fmt.Errorf("DuckDBHistoryManager の初期化に失敗しました: %w", err)
+// chatSvc と historyMgr を引数に追加
+func setupHandlers(s *discordgo.Session, cfg *config.Config, chatSvc chat.Service, historyMgr history.HistoryManager) (history.HistoryManager, chat.Service, error) {
+	var err error
+	if historyMgr == nil {
+		historyMgr, err = history.NewDuckDBHistoryManager()
+		if err != nil {
+			log.Printf("DuckDBHistoryManager の初期化に失敗しました: %v", err)
+			return nil, nil, fmt.Errorf("DuckDBHistoryManager の初期化に失敗しました: %w", err)
+		}
 	}
 
-	chatSvc, err := chat.NewChat(cfg, historyMgr)
-	if err != nil {
-		if cerr, ok := err.(interface{ Unwrap() error }); ok && cerr.Unwrap() != nil {
-			log.Printf("Chat サービスの初期化に失敗しました: %v (underlying: %v)", err, cerr.Unwrap())
-		} else {
-			log.Printf("Chat サービスの初期化に失敗しました: %v", err)
+	if chatSvc == nil {
+		chatSvc, err = chat.NewChat(cfg, historyMgr)
+		if err != nil {
+			if cerr, ok := err.(interface{ Unwrap() error }); ok && cerr.Unwrap() != nil {
+				log.Printf("Chat サービスの初期化に失敗しました: %v (underlying: %v)", err, cerr.Unwrap())
+			} else {
+				log.Printf("Chat サービスの初期化に失敗しました: %v", err)
+			}
+			return nil, nil, fmt.Errorf("Chat サービスの初期化に失敗しました: %w", err)
 		}
-		return nil, nil, fmt.Errorf("Chat サービスの初期化に失敗しました: %w", err)
 	}
 
 	// chat パッケージと discord パッケージでエラーロガーを共有
-	errorLogger := chat.GetErrorLogger()
+	// errorLogger の取得は chatSvc が nil でないことを保証してから行う
+	var errorLogger *log.Logger
+	if chatSvc != nil {
+		errorLogger = chat.GetErrorLogger()
+	}
 	SetErrorLogger(errorLogger)
 
 	err = os.MkdirAll("log", 0755)
@@ -52,9 +62,6 @@ func setupHandlers(s *discordgo.Session, cfg *config.Config) (history.HistoryMan
 	log.SetOutput(logFile)
 
 	s.AddHandler(onReady)
-	s.AddHandler(messageCreateHandler)
-	s.AddHandler(messageUpdateHandler)
-	s.AddHandler(messageDeleteHandler)
 	s.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		if i.Type != discordgo.InteractionApplicationCommand {
 			return
@@ -114,9 +121,61 @@ func onReady(s *discordgo.Session, event *discordgo.Ready) {
 	log.Printf("Bot is ready! %s#%s", s.State.User.Username, s.State.User.Discriminator)
 }
 
-func messageCreateHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
+// chatSvc と cfg を引数に追加
+func messageCreateHandler(s *discordgo.Session, m *discordgo.MessageCreate, chatSvc chat.Service, cfg *config.Config) {
 	if m.Author.ID == s.State.User.ID {
 		return
+	}
+
+	// DMの場合の処理
+	if m.GuildID == "" {
+		log.Printf("DM受信: UserID=%s, Username=%s, Content=%s", m.Author.ID, m.Author.Username, m.Content)
+
+		// DMへの返信処理
+		if chatSvc == nil {
+			log.Println("DM処理エラー: chatSvcがnilです")
+			s.ChannelMessageSend(m.ChannelID, "内部エラーにより応答できませんでした。")
+			return
+		}
+		if cfg == nil {
+			log.Println("DM処理エラー: cfgがnilです")
+			s.ChannelMessageSend(m.ChannelID, "内部エラーにより応答できませんでした。")
+			return
+		}
+
+		// DMの場合、スレッドIDの代わりにチャンネルIDを使用し、プロンプトは空にする
+		// timestamp を string に変換し、戻り値を正しく受け取る
+		responseText, _, _, err := chatSvc.GetResponse(m.Author.ID, m.ChannelID, m.Author.Username, m.Content, m.Timestamp.Format(time.RFC3339), "")
+		if err != nil {
+			log.Printf("DM応答生成エラー: %v", err)
+			s.ChannelMessageSend(m.ChannelID, "応答の生成中にエラーが発生しました。")
+			return
+		}
+		if responseText == "" {
+			log.Printf("DM応答が空です。")
+			s.ChannelMessageSend(m.ChannelID, "応答がありませんでした。")
+			return
+		}
+
+		_, err = s.ChannelMessageSend(m.ChannelID, responseText)
+		if err != nil {
+			log.Printf("DM返信エラー: %v", err)
+		}
+
+		jst := m.Timestamp
+		err = history.LogMessageCreate(
+			m.ID,
+			m.ChannelID,
+			m.GuildID, // DMの場合は空文字列
+			m.Author.ID,
+			m.Author.Username,
+			m.Content,
+			jst,
+		)
+		if err != nil {
+			log.Printf("Failed to log DM create event: %v", err)
+		}
+		return // DM処理後は通常のメッセージ処理をスキップ
 	}
 
 	jst := m.Timestamp

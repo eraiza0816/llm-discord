@@ -97,11 +97,19 @@ func StartBot(cfg *config.Config) error {
 	// setupHandlers から history.HistoryManager と chat.Service を受け取る
 	var historyMgr history.HistoryManager
 	var chatSvc chat.Service // chat.Service 型の変数を宣言
-	historyMgr, chatSvc, err = setupHandlers(session, cfg) // cfg を渡すように変更
+	historyMgr, chatSvc, err = setupHandlers(session, cfg, chatSvc, historyMgr) // chatSvc と historyMgr を渡す
 	if err != nil {
 		log.Printf("Error in setupHandlers: %v", err)
 		return fmt.Errorf("ハンドラの設定中にエラーが発生しました: %w", err)
 	}
+
+	// AddHandler for messageCreate to pass chatSvc and cfg
+	session.AddHandler(func(s *discordgo.Session, m *discordgo.MessageCreate) {
+		messageCreateHandler(s, m, chatSvc, cfg)
+	})
+	session.AddHandler(messageUpdateHandler) //  messageUpdateHandler と messageDeleteHandler は変更なし
+	session.AddHandler(messageDeleteHandler)
+
 
 	// HistoryManager のクローズ処理
 	if historyMgr != nil {

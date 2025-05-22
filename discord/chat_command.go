@@ -11,12 +11,38 @@ import (
 )
 
 func chatCommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate, chatSvc chat.Service, threadID string, cfg *config.Config) {
+	if cfg == nil {
+		log.Println("chatCommandHandler: cfg is nil")
+		sendErrorResponse(s, i, fmt.Errorf("設定が読み込まれていません。"))
+		return
+	}
+	if cfg.Model == nil {
+		log.Println("chatCommandHandler: cfg.Model is nil")
+		sendErrorResponse(s, i, fmt.Errorf("モデル設定が読み込まれていません。"))
+		return
+	}
 	modelCfg := cfg.Model
 
-	username := i.Member.User.Username
+	var username string
+	var userID string
+	var avatarURL string
+
+	if i.Member != nil && i.Member.User != nil {
+		username = i.Member.User.Username
+		userID = i.Member.User.ID
+		avatarURL = i.Member.User.AvatarURL("")
+	} else if i.User != nil {
+		username = i.User.Username
+		userID = i.User.ID
+		avatarURL = i.User.AvatarURL("")
+	} else {
+		log.Println("chatCommandHandler: User information not found in interaction")
+		sendErrorResponse(s, i, fmt.Errorf("ユーザー情報が取得できませんでした。"))
+		return
+	}
+
 	message := i.ApplicationCommandData().Options[0].StringValue()
 	timestamp := time.Now().Format(time.RFC3339)
-	userID := i.Member.User.ID
 
 	var userPrompt string
 
@@ -49,7 +75,7 @@ func chatCommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate, ch
 	embedUser := &discordgo.MessageEmbed{
 		Author: &discordgo.MessageEmbedAuthor{
 			Name:    username,
-			IconURL: i.Member.User.AvatarURL(""),
+			IconURL: avatarURL,
 		},
 		Fields: []*discordgo.MessageEmbedField{
 			{Value: message},

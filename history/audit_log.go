@@ -9,13 +9,14 @@ import (
 )
 
 const (
-	auditLogPath = "data/audit.jsonl"
+	auditLogPath      = "data/audit.jsonl"
+	timestampFormat = "2006-01-02T15:04:05.000Z07:00"
 )
 
 type AuditLogEntry struct {
-	Timestamp        time.Time `json:"timestamp"`
-	GuildID          string    `json:"guild_id,omitempty"`
-	ChannelID        string    `json:"channel_id"`
+	Timestamp        string `json:"timestamp"`
+	GuildID          string `json:"guild_id,omitempty"`
+	ChannelID        string `json:"channel_id"`
 	MessageID        string    `json:"message_id"`
 	UserID           string    `json:"user_id"`
 	UserName         string    `json:"user_name"`
@@ -61,7 +62,7 @@ func writeAuditLogEntry(entry AuditLogEntry) error {
 
 func LogMessageCreate(messageID, channelID, guildID, userID, userName, content string, timestamp time.Time) error {
 	entry := AuditLogEntry{
-		Timestamp:   timestamp,
+		Timestamp:   timestamp.UTC().Format(timestampFormat),
 		GuildID:     guildID,
 		ChannelID:   channelID,
 		MessageID:   messageID,
@@ -75,7 +76,7 @@ func LogMessageCreate(messageID, channelID, guildID, userID, userName, content s
 
 func LogMessageUpdate(messageID, content string, updateTimestamp time.Time) error {
 	entry := AuditLogEntry{
-		Timestamp: updateTimestamp,
+		Timestamp: updateTimestamp.UTC().Format(timestampFormat),
 		MessageID: messageID,
 		Content:   content,
 		EventType: "update",
@@ -85,7 +86,7 @@ func LogMessageUpdate(messageID, content string, updateTimestamp time.Time) erro
 
 func LogMessageDelete(messageID string, deletionTimestamp time.Time) error {
 	entry := AuditLogEntry{
-		Timestamp:        deletionTimestamp,
+		Timestamp:        deletionTimestamp.UTC().Format(timestampFormat),
 		MessageID:        messageID,
 		IsDeleted:        true,
 		EventType:        "delete",

@@ -12,6 +12,7 @@
 - BOTの説明表示機能: `/about`コマンドで、`json/model.json` に定義されたBOTの説明を表示します。
 - プロンプト編集機能: ユーザーは`/edit`コマンドを使用してプロンプトを編集できます。
   - `/edit`コマンドで"delete"と送信された場合、`json/custom_model.json` から該当ユーザーの行を削除します。
+- DM応答機能: BotへのDM送信に対しても応答します。
 - 天気情報提供機能: LLMがFunction Calling (`getWeather`) を利用して、ユーザーがメッセージに「天気」と地名を含む場合に `zu2l` API (`GetWeatherPoint`, `GetWeatherStatus`) を呼び出して天気情報を返します。
 - 頭痛情報提供機能: LLMがFunction Calling (`getPainStatus`) を利用して、ユーザーがメッセージに「頭痛」または「ずつう」と地名を含む場合に `zu2l` API (`GetWeatherPoint`, `GetPainStatus`) を呼び出して頭痛情報を返します。
 - Otenki ASP情報提供機能: LLMがFunction Calling (`getOtenkiAspInfo`) を利用して、ユーザーがメッセージに「asp情報」と地点コードを含む場合に `zu2l` API (`GetOtenkiASP`) を呼び出してOtenki ASP情報を返します。
@@ -285,9 +286,10 @@
   - 役割: Discordのイベントハンドリングとコマンドディスパッチ、サービスの初期化を行う。
   - 処理:
     - `setupHandlers(s *discordgo.Session, cfg *config.Config)`: Bot起動時に呼び出され、ログ設定、`DuckDBHistoryManager` と `ChatService` の初期化、コマンドハンドラの登録を行う。初期化された `HistoryManager` と `ChatService` を返す。`chat` パッケージとエラーロガーを共有する。
-    - `interactionCreate` ハンドラ: 受け取ったインタラクションからスレッドID（スレッドでない場合はチャンネルID）を取得し、各コマンドハンドラ (`chatCommandHandler`, `resetCommandHandler`, `aboutCommandHandler`, `editCommandHandler`) に `cfg` や必要なサービスを渡す。
-    - `onReady`: Bot準備完了時のログ出力。
-    - `messageCreateHandler`, `messageUpdateHandler`, `messageDeleteHandler`: メッセージの作成、更新、削除イベントを `history.LogMessage*` を使って監査ログに記録する。
+  - `interactionCreate` ハンドラ: 受け取ったインタラクションからスレッドID（スレッドでない場合はチャンネルID）を取得し、各コマンドハンドラ (`chatCommandHandler`, `resetCommandHandler`, `aboutCommandHandler`, `editCommandHandler`) に `cfg` や必要なサービスを渡す。DMからのインタラクションの場合は、`i.User` からユーザー情報を取得します。
+  - `onReady`: Bot準備完了時のログ出力。
+  - `messageCreateHandler`: メッセージ作成イベントを処理します。DMの場合は `m.GuildID` が空文字列になることを利用してDMを判定し、`chatSvc.GetResponse` を呼び出して応答を生成し、DMで返信します。サーバー内メッセージの場合は監査ログに記録します。
+  - `messageUpdateHandler`, `messageDeleteHandler`: メッセージの更新、削除イベントを `history.LogMessage*` を使って監査ログに記録する。
 
 - discord/chat_command.go:
   - 役割: `/chat` コマンドの処理を行う。
