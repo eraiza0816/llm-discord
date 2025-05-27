@@ -256,7 +256,6 @@ HandleResponse:
 					partsForNextTurn = append(partsForNextTurn, functionCallPart)
 				}
 
-
 				// LLMに渡すtoolResultの長さを制限
 				const maxToolResultForLLM = 1800
 				toolResultForLLM := toolResult
@@ -288,8 +287,6 @@ HandleResponse:
 						finalResponseText += fmt.Sprintf(" ツールの結果: %s", toolResult)
 					}
 				}
-
-				// (オプション) LLMからの導入テキストと最終応答を結合することも可能だが、現在はしていない。
 
 				// 最終応答があれば履歴に追加
 				if finalResponseText != "" {

@@ -7,10 +7,9 @@ import (
 	"github.com/eraiza0816/llm-discord/config"
 )
 
-func aboutCommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *config.Config) { // cfg パラメータを追加
+func aboutCommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *config.Config) {
 	if cfg == nil {
 		log.Println("Error in aboutCommandHandler: cfg is nil")
-		// エラーレスポンスをユーザーに返すことも検討
 		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{

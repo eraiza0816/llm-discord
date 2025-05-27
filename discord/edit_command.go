@@ -6,10 +6,10 @@ import (
 	"strings"
 
 	"github.com/bwmarrin/discordgo"
-	"github.com/eraiza0816/llm-discord/config" // chat を config に変更
+	"github.com/eraiza0816/llm-discord/config"
 )
 
-func editCommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *config.Config) { // chatSvc を cfg に変更
+func editCommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *config.Config) {
 	log.Printf("editCommandHandler called")
 
 	var username string

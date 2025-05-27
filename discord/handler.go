@@ -105,13 +105,13 @@ func setupHandlers(s *discordgo.Session, cfg *config.Config, chatSvc chat.Servic
 
 		switch i.ApplicationCommandData().Name {
 		case "chat":
-			chatCommandHandler(s, i, chatSvc, threadID, cfg) // cfgを渡す
+			chatCommandHandler(s, i, chatSvc, threadID, cfg)
 		case "reset":
 			resetCommandHandler(s, i, historyMgr, threadID)
 		case "about":
-			aboutCommandHandler(s, i, cfg) // cfgを渡す
+			aboutCommandHandler(s, i, cfg)
 		case "edit":
-			editCommandHandler(s, i, cfg) // chatSvc を cfg に変更
+			editCommandHandler(s, i, cfg)
 		}
 	})
 	return historyMgr, chatSvc, nil
@@ -121,7 +121,6 @@ func onReady(s *discordgo.Session, event *discordgo.Ready) {
 	log.Printf("Bot is ready! %s#%s", s.State.User.Username, s.State.User.Discriminator)
 }
 
-// chatSvc と cfg を引数に追加
 func messageCreateHandler(s *discordgo.Session, m *discordgo.MessageCreate, chatSvc chat.Service, cfg *config.Config) {
 	if m.Author.ID == s.State.User.ID {
 		return
