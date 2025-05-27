@@ -6,12 +6,22 @@ import (
 	"strings"
 
 	"github.com/bwmarrin/discordgo"
-	"github.com/eraiza0816/llm-discord/chat"
+	"github.com/eraiza0816/llm-discord/config" // chat を config に変更
 )
 
-func editCommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate, chatSvc chat.Service) {
+func editCommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *config.Config) { // chatSvc を cfg に変更
 	log.Printf("editCommandHandler called")
-	username := i.Member.User.Username
+
+	var username string
+	if i.Member != nil && i.Member.User != nil {
+		username = i.Member.User.Username
+	} else if i.User != nil { // DMからの場合
+		username = i.User.Username
+	} else {
+		log.Println("editCommandHandler: User information not found in interaction")
+		sendErrorResponse(s, i, fmt.Errorf("ユーザー情報が取得できませんでした。"))
+		return
+	}
 
 	options := i.ApplicationCommandData().Options
 

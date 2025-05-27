@@ -46,18 +46,18 @@ func chatCommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate, ch
 
 	var userPrompt string
 
-	customPrompt, exists, err := GetCustomPromptForUser(username)
-	if err != nil {
-		log.Printf("カスタムプロンプトの取得中にエラーが発生しました: %v。デフォルトプロンプトを使用します。", err)
-		userPrompt = modelCfg.GetPromptByUser(username)
-	} else if exists {
+	// カスタムプロンプトの取得
+	// GetCustomPromptForUser はエラーを返さなくなったため、エラーハンドリングは不要
+	customPrompt, exists := GetCustomPromptForUser(cfg, username)
+	if exists {
 		log.Printf("ユーザー %s のカスタムプロンプトを使用します。", username)
 		userPrompt = customPrompt
 	} else {
-		userPrompt = modelCfg.GetPromptByUser(username)
+		log.Printf("ユーザー %s のカスタムプロンプトは見つかりませんでした。デフォルトプロンプトを使用します。", username)
+		userPrompt = modelCfg.GetPromptByUser(username) // modelCfg は cfg.Model と同じ
 	}
 
-	log.Printf("User %s sent message: %s ", username, message)
+	log.Printf("User %s (ID: %s, Thread: %s) sent message: %s ", username, userID, threadID, message)
 
 	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,

@@ -1,4 +1,23 @@
 ## 変更履歴
+- 2025/05/27: リファクタリング：設定管理の改善。
+    - `config/config.go`:
+        - `json/custom_model.json` の読み込み処理を追加し、すべての設定ファイル (`.env`, `json/model.json`, `json/custom_model.json`) の読み込みをここに集約。
+        - `CustomPromptConfig` 構造体を `discord/types.go` から移動。
+        - `Config` 構造体に `CustomModel *CustomPromptConfig` フィールドを追加。
+    - `discord/types.go`:
+        - `CustomPromptConfig` の定義を削除 (config パッケージへ移動)。
+        - ファイル自体が不要になったため削除。
+    - `discord/custom_prompt.go`:
+        - `config.CustomPromptConfig` を使用するように変更。
+        - `GetCustomPromptForUser` が `*config.Config` を引数に取るように変更。
+        - `loadCustomPrompts` 関数を `loadCustomPromptsFromFile` にリネームし、ファイル直接読み込みのヘルパー関数として位置づけを変更。
+    - `discord/chat_command.go`:
+        - `GetCustomPromptForUser` の呼び出し方を変更し、`*config.Config` を渡すように修正。
+    - `discord/edit_command.go`:
+        - `editCommandHandler` の引数を `chat.Service` から `*config.Config` に変更。
+    - `discord/handler.go`:
+        - `interactionCreate` ハンドラ内で `editCommandHandler` を呼び出す際の引数を `*config.Config` に変更。
+    - その他: DuckDBのロックファイル競合エラーのトラブルシューティングを実施。
 - 2025/05/22: - 機能追加：DMでの応答機能を追加しました。
       - BotにDMを送信すると、LLMが応答を生成して返信するようになりました。
     - 修正：サーバー内コマンド実行時にDMからのインタラクションを考慮していなかった不具合を修正しました。
