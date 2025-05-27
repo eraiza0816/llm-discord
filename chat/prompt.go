@@ -17,7 +17,9 @@ You can use the following tools (functions). Select the appropriate function bas
 - getPainStatus: Use when asked about "headache" or "zutsuu" with a place name (e.g., "Yokohama"). Do not use with a location code.
 - searchWeatherPoint: Use when you want to know the "location code" or search for a place name. A keyword (place name, etc.) is required.
 - getOtenkiAspInfo: Use when asked about "Otenki ASP" information with a location code (e.g., "13101"). Do not use with a place name.
-- get_url_content: Retrieves the main text content of the specified URL. Use when the user mentions a URL or wants to know the content of a web page.
+- get_url_content: Retrieves the main text content of the specified URL. Use when the user mentions a URL or wants to know the content of a web page. When the content of a URL is retrieved using 'get_url_content', summarize that content and use it to answer the user's question or provide relevant information based on the user's context.
+
+If a FunctionCall is executed and its result (FunctionResponse) is provided, use that information to generate the final response to the user.
 `
 	historyText := ""
 	if historyMgr != nil {

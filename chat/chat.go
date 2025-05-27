@@ -25,9 +25,10 @@ type Service interface {
 }
 
 type Chat struct {
-	genaiClient    *genai.Client
+	genaiClient      *genai.Client
 	genaiModel       *genai.GenerativeModel
 	weatherService   WeatherService
+	urlReaderService URLReaderService // Added
 	defaultPrompt    string
 	historyMgr       history.HistoryManager
 	tools            []*genai.Tool
@@ -53,13 +54,18 @@ func NewChat(cfg *config.Config, historyMgr history.HistoryManager) (Service, er
 	genaiModel := genaiClient.GenerativeModel(initialGeminiModelName)
 
 	weatherService := NewWeatherService()
+	urlReaderService := NewURLReaderService() // Added
 
 	weatherFuncDeclarations := weatherService.GetFunctionDeclarations()
+	urlReaderFuncDeclaration := urlReaderService.GetURLReaderFunctionDeclaration() // Added
 
 	var allDeclarations []*genai.FunctionDeclaration
 	// weatherFuncDeclarations が nil でなく、要素を持つ場合のみ追加
 	if len(weatherFuncDeclarations) > 0 {
 		allDeclarations = append(allDeclarations, weatherFuncDeclarations...)
+	}
+	if urlReaderFuncDeclaration != nil { // Added
+		allDeclarations = append(allDeclarations, urlReaderFuncDeclaration)
 	}
 
 	var tools []*genai.Tool
@@ -77,6 +83,7 @@ func NewChat(cfg *config.Config, historyMgr history.HistoryManager) (Service, er
 		genaiClient:      genaiClient,
 		genaiModel:       genaiModel,
 		weatherService:   weatherService,
+		urlReaderService: urlReaderService, // Added
 		historyMgr:       historyMgr,
 		tools:            tools,
 		modelConfig:      initialModelCfg,
@@ -175,10 +182,22 @@ HandleResponse:
 					fn := v
 					functionCallProcessed = true
 
-					// 既存の天候情報関数の処理
-					toolResult, toolErr = c.weatherService.HandleFunctionCall(fn)
+					if fn.Name == "get_url_content" {
+						url, ok := fn.Args["url"].(string)
+						if !ok {
+							toolErr = fmt.Errorf("get_url_content の引数 'url' がstring型ではありません")
+							errorLogger.Printf("Invalid argument type for get_url_content: %v", fn.Args["url"])
+							toolResult = fmt.Sprintf("関数の引数エラー: %v", toolErr)
+						} else {
+							toolResult, toolErr = c.urlReaderService.GetURLContentAsText(url)
+						}
+					} else {
+						// 既存の天候情報関数の処理
+						toolResult, toolErr = c.weatherService.HandleFunctionCall(fn)
+					}
+
 					if toolErr != nil {
-						errorLogger.Printf("Error handling function call %s via WeatherService: %v", fn.Name, toolErr)
+						errorLogger.Printf("Error handling function call %s: %v", fn.Name, toolErr)
 						toolResult = fmt.Sprintf("関数の処理中にエラーが発生しました: %v", toolErr)
 						toolErr = nil
 					}
@@ -207,11 +226,36 @@ HandleResponse:
 
 				// 次のLLM呼び出しのためのpartsを構築する。
 				// 構成:
-				// 1. LLMの最初の応答 (FunctionCallを含む candidate.Content.Parts)
-				// 2. ツールの実行結果 (genai.FunctionResponse)
-				// ChatSessionを使用せず手動で会話のターンを模倣している。
+				// 1. ユーザーの最新のメッセージ
+				// 2. LLMの最初の応答から FunctionCall の部分のみ
+				// 3. ツールの実行結果 (genai.FunctionResponse)
 				var partsForNextTurn []genai.Part
-				partsForNextTurn = append(partsForNextTurn, candidate.Content.Parts...)
+				partsForNextTurn = append(partsForNextTurn, genai.Text(message)) // ユーザーの最新メッセージ
+
+				var functionCallPart genai.FunctionCall
+				for _, part := range candidate.Content.Parts {
+					if fc, ok := part.(genai.FunctionCall); ok {
+						functionCallPart = fc
+						break
+					}
+				}
+
+				if functionCallPart.Name == "" {
+					errorLogger.Printf("Could not extract FunctionCall from candidate.Content.Parts for second call. Using full candidate.Content.Parts.")
+					// FunctionCallが見つからなかった場合は、元のpartsForNextTurnのロジックにフォールバック（あるいはエラー）
+					// ここでは元のロジック（candidate.Content.Parts全体）を使う
+					partsForNextTurn = append(partsForNextTurn, candidate.Content.Parts...)
+				} else {
+					// LLMの最初の応答に含まれる導入テキスト（もしあれば）も追加した方が自然かもしれない。
+					// 一旦、FunctionCallのみに絞ってみる。
+					// 導入テキストも必要な場合は、candidate.Content.Parts全体を使うか、Text部分も抽出する。
+					// llmIntroText を使う手もある。
+					if llmIntroText.Len() > 0 {
+						partsForNextTurn = append(partsForNextTurn, genai.Text(llmIntroText.String()))
+					}
+					partsForNextTurn = append(partsForNextTurn, functionCallPart)
+				}
+
 
 				// LLMに渡すtoolResultの長さを制限
 				const maxToolResultForLLM = 1800

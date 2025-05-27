@@ -17,7 +17,7 @@
 - 頭痛情報提供機能: LLMがFunction Calling (`getPainStatus`) を利用して、ユーザーがメッセージに「頭痛」または「ずつう」と地名を含む場合に `zu2l` API (`GetWeatherPoint`, `GetPainStatus`) を呼び出して頭痛情報を返します。
 - Otenki ASP情報提供機能: LLMがFunction Calling (`getOtenkiAspInfo`) を利用して、ユーザーがメッセージに「asp情報」と地点コードを含む場合に `zu2l` API (`GetOtenkiASP`) を呼び出してOtenki ASP情報を返します。
 - 地点検索機能: LLMがFunction Calling (`searchWeatherPoint`) を利用して、ユーザーがメッセージに「地点検索」とキーワードを含む場合に `zu2l` API (`GetWeatherPoint`) を呼び出して地点情報を返します。
-- URL内容理解機能: ユーザーが会話中にURLを提示すると、LLMがFunction Calling (`get_url_content`) を利用してURLの主要なテキストコンテンツを取得し、内容を理解した上で応答します。
+- URL内容理解機能: ユーザーが会話中にURLを提示すると、LLMがFunction Calling (`get_url_content`) を利用して `URLReaderService` を呼び出し、URLの主要なテキストコンテンツを取得し、内容を理解した上で応答します。
 - メッセージ監査ログ機能: Discordでのメッセージ作成、更新、削除イベントをログファイル (`log/audit.log`) に記録します。
 
 ## ドメインに関する用語（ユビキタス言語）
@@ -95,7 +95,7 @@
 
 ### ドメインサービス / アプリケーションサービス / インフラストラクチャサービス
 
-- ChatService (`chat/chat.go`, `chat/prompt.go`, `chat/utils.go`, `chat/ollama.go`, `chat/weather.go`, `chat/url_reader_service.go`)
+- ChatService (`chat/chat.go`, `chat/prompt.go`, `chat/utils.go`, `chat/ollama.go`, `chat/weather.go`)
   - 役割: LLM (Gemini, Ollama) とのやり取り、および Gemini の Function Calling 機能のディスパッチを担当する。天気関連の Function Calling 処理は `WeatherService` に、URL内容取得関連の Function Calling 処理は `URLReaderService` に委譲する。
   - 処理:
     - `NewChat(cfg *config.Config, historyMgr history.HistoryManager)` (`chat/chat.go`): Geminiクライアント、`HistoryManager`、`WeatherService`、`URLReaderService` を初期化する。`cfg.Model` から `ModelConfig` を取得し保持する。`WeatherService` および `URLReaderService` から取得した Function Declaration を含む `Tool` を定義し、初期 Gemini モデルに設定する。
@@ -111,7 +111,7 @@
       6. Gemini からの応答 (`resp.Candidates[0].Content.Parts`) をループで確認する。
       7. 応答パーツの中に `genai.Text` 型が見つかった場合、その内容を `llmIntroText` バッファに追記する。
       8. 応答パーツの中に `genai.FunctionCall` 型が見つかった場合:
-         - `fn.Name` が `get_url_content` の場合、`urlReaderService.GetURLContentAsText` を呼び出してURLの内容を取得する。
+         - `fn.Name` が `get_url_content` の場合、`urlReaderService.GetURLContentAsText` を呼び出してURLの内容を取得する。URLは `fn.Args["url"]` から取得する。
          - それ以外の場合（天気関連など）、`weatherService.HandleFunctionCall` を呼び出して処理を委譲する。
          - `toolResult` に結果を格納し、`functionCallProcessed` フラグを立てる。（エラーハンドリングも含む）
       9. ループ終了後、`functionCallProcessed` が `true` の場合:
@@ -143,8 +143,8 @@
   - 役割: URLの内容取得とテキスト抽出、および `get_url_content` Function Declaration の提供を担当する。
   - 処理:
     - `NewURLReaderService`: サービスの初期化。
-    - `GetURLContentAsText`: `curl` コマンドでURLの内容を取得し、`goquery` でHTMLをパースして主要なテキストを抽出する。抽出テキストは最大2000文字に制限される。
-    - `GetURLReaderFunctionDeclaration`: `get_url_content` 関数の定義を返す。
+    - `GetURLContentAsText(url string) (string, error)`: 指定されたURLの内容を `http.Get` で取得し、`goquery` でHTMLをパースして主要なテキストを抽出する。抽出テキストは最大2000文字に制限される。
+    - `GetURLReaderFunctionDeclaration() *genai.FunctionDeclaration`: `get_url_content` 関数の定義 (`FunctionDeclaration`) を返す。
 
 - HistoryManager (`history/history.go`, `history/duckdb_manager.go`)
   - 役割: Discordのスレッド（またはチャンネル）単位およびユーザー単位でのチャット履歴を管理する。DuckDBデータベースを使用して履歴を永続化する。
@@ -199,8 +199,8 @@
 - chat/chat.go:
   - 役割: `Service` インターフェースの主要な実装。LLM (Gemini, Ollama) API との通信、Gemini の Function Calling のディスパッチ（`WeatherService` および `URLReaderService` への委譲を含む）、応答生成のコアロジック、エラー時のフォールバック処理を担当。
   - 処理:
-    - `NewChat(cfg *config.Config, historyMgr history.HistoryManager)`: サービスと依存関係 (`WeatherService`, `URLReaderService` を含む) を初期化。`cfg.Model` から `ModelConfig` を取得して保持する。
-    - `GetResponse(userID, threadID, username, message, timestamp, prompt)`: 保持している `ModelConfig` を使用する。ユーザーからのメッセージ、スレッドID、タイムスタンプを受け取り、`ModelConfig` の設定に基づいて使用するLLMを決定。`historyMgr` を使用してスレッドIDに基づいた履歴を取得・保存する。Gemini API で 429 エラーが発生した場合のフォールバック処理などを行う。
+    - `NewChat(cfg *config.Config, historyMgr history.HistoryManager)`: サービスと依存関係 (`WeatherService`, `URLReaderService` を含む) を初期化。`cfg.Model` から `ModelConfig` を取得して保持する。`URLReaderService` から `get_url_content` の `FunctionDeclaration` を取得し、`WeatherService` のものと合わせて `genaiModel.Tools` に設定する。
+    - `GetResponse(userID, threadID, username, message, timestamp, prompt)`: 保持している `ModelConfig` を使用する。ユーザーからのメッセージ、スレッドID、タイムスタンプを受け取り、`ModelConfig` の設定に基づいて使用するLLMを決定。`historyMgr` を使用してスレッドIDに基づいた履歴を取得・保存する。Function Calling が発生した場合、`fn.Name` が `get_url_content` であれば `urlReaderService` に処理を委譲する。Gemini API で 429 エラーが発生した場合のフォールバック処理などを行う。
     - `Close()`: Geminiクライアントを閉じる。
 
 - chat/prompt.go:
@@ -227,8 +227,8 @@
   - 役割: `URLReaderService` の実装。URLの内容取得とテキスト抽出、および `get_url_content` Function Declaration の提供を担当する。
   - 処理:
     - `NewURLReaderService`: サービスの初期化。
-    - `GetURLContentAsText`: `curl` コマンドでURLの内容を取得し、`goquery` でHTMLをパースして主要なテキストを抽出する。抽出テキストは最大2000文字に制限される。
-    - `GetURLReaderFunctionDeclaration`: `get_url_content` 関数の定義を返す。
+    - `GetURLContentAsText(url string) (string, error)`: 指定されたURLの内容を `http.Get` で取得し、`goquery` でHTMLをパースして主要なテキストを抽出する。抽出テキストは最大2000文字に制限される。
+    - `GetURLReaderFunctionDeclaration() *genai.FunctionDeclaration`: `get_url_content` 関数の定義 (`FunctionDeclaration`) を返す。
 
 - chat/ollama.go:
   - 役割: Ollama LLM との連携に関するロジックを担当。
