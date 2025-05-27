@@ -17,7 +17,7 @@
 - 頭痛情報提供機能: LLMがFunction Calling (`getPainStatus`) を利用して、ユーザーがメッセージに「頭痛」または「ずつう」と地名を含む場合に `zu2l` API (`GetWeatherPoint`, `GetPainStatus`) を呼び出して頭痛情報を返します。
 - Otenki ASP情報提供機能: LLMがFunction Calling (`getOtenkiAspInfo`) を利用して、ユーザーがメッセージに「asp情報」と地点コードを含む場合に `zu2l` API (`GetOtenkiASP`) を呼び出してOtenki ASP情報を返します。
 - 地点検索機能: LLMがFunction Calling (`searchWeatherPoint`) を利用して、ユーザーがメッセージに「地点検索」とキーワードを含む場合に `zu2l` API (`GetWeatherPoint`) を呼び出して地点情報を返します。
-- URL内容理解機能: ユーザーが会話中にURLを提示すると、LLMがFunction Calling (`get_url_content`) を利用してURLの主要なテキストコンテンツを取得し、内容を理解した上で応答します。
+- URL内容理解機能: ユーザーが会話中にURLを提示すると、LLMがFunction Calling (`get_url_content`) を利用して `URLReaderService` を呼び出し、URLの主要なテキストコンテンツを取得し、内容を理解した上で応答します。
 - メッセージ監査ログ機能: Discordでのメッセージ作成、更新、削除イベントをログファイル (`log/audit.log`) に記録します。
 
 ## ドメインに関する用語（ユビキタス言語）
@@ -30,9 +30,9 @@
 - コマンド: Botへの指示 (例: `/chat`, `/reset`, `/about`, `/edit`)
 - プロンプト: GeminiまたはOllamaへの指示文。ユーザーごと、またはデフォルトの指示文が設定可能。
 - ぺちこ: このBotの名前
-- 設定 (Config): `.env` ファイルおよび `json/model.json` から読み込まれるBotの動作に必要な設定情報。
-- モデル設定 (ModelConfig): `json/model.json` から読み込まれるBotのLLMモデルや表示に関する基本設定。
-- カスタムプロンプト設定 (CustomPromptConfig): `json/custom_model.json` から読み書きされるユーザー固有のプロンプト設定。
+- 設定 (Config): `.env` ファイル、`json/model.json`、`json/custom_model.json` から読み込まれるBotの動作に必要な設定情報。(`config/config.go` で一元管理)
+- モデル設定 (ModelConfig): `json/model.json` から読み込まれるBotのLLMモデルや表示に関する基本設定。(`loader/model.go` で定義、`config/config.go` で読み込み)
+- カスタムプロンプト設定 (CustomPromptConfig): `json/custom_model.json` から読み書きされるユーザー固有のプロンプト設定。(`config/config.go` で定義・読み込み、`discord/custom_prompt.go` で書き込み処理)
 - スレッドID (ThreadID): Discordのスレッドまたはチャンネルの一意な識別子。履歴管理やコマンド処理の単位となる。
 - 監査ログ (AuditLog): メッセージの作成、更新、削除などのイベントを記録するログ。
 
@@ -79,6 +79,7 @@
   - DiscordBotToken: Discord Botのトークン。
   - GeminiAPIKey: Gemini APIのキー。
   - Model: `loader.ModelConfig` へのポインタ。
+  - CustomModel: `config.CustomPromptConfig` へのポインタ。
 
 - モデル設定 (ModelConfig) (`loader/model.go`)
   - Name: Botの名前。
@@ -90,12 +91,12 @@
   - チャット履歴の最大サイズ (MaxHistorySize): `InMemoryHistoryManager` で保持するチャット履歴の最大ペア数。
   - Ollama設定 (OllamaConfig): Ollama APIに関する設定 (`loader.OllamaConfig` 型)。
 
-- カスタムプロンプト設定 (CustomPromptConfig) (`discord/types.go`)
+- カスタムプロンプト設定 (CustomPromptConfig) (`config/config.go`)
   - ユーザープロンプト (Prompts): ユーザー名をキーとしたカスタムプロンプトのマップ。
 
 ### ドメインサービス / アプリケーションサービス / インフラストラクチャサービス
 
-- ChatService (`chat/chat.go`, `chat/prompt.go`, `chat/utils.go`, `chat/ollama.go`, `chat/weather.go`, `chat/url_reader_service.go`)
+- ChatService (`chat/chat.go`, `chat/prompt.go`, `chat/utils.go`, `chat/ollama.go`, `chat/weather.go`)
   - 役割: LLM (Gemini, Ollama) とのやり取り、および Gemini の Function Calling 機能のディスパッチを担当する。天気関連の Function Calling 処理は `WeatherService` に、URL内容取得関連の Function Calling 処理は `URLReaderService` に委譲する。
   - 処理:
     - `NewChat(cfg *config.Config, historyMgr history.HistoryManager)` (`chat/chat.go`): Geminiクライアント、`HistoryManager`、`WeatherService`、`URLReaderService` を初期化する。`cfg.Model` から `ModelConfig` を取得し保持する。`WeatherService` および `URLReaderService` から取得した Function Declaration を含む `Tool` を定義し、初期 Gemini モデルに設定する。
@@ -111,7 +112,7 @@
       6. Gemini からの応答 (`resp.Candidates[0].Content.Parts`) をループで確認する。
       7. 応答パーツの中に `genai.Text` 型が見つかった場合、その内容を `llmIntroText` バッファに追記する。
       8. 応答パーツの中に `genai.FunctionCall` 型が見つかった場合:
-         - `fn.Name` が `get_url_content` の場合、`urlReaderService.GetURLContentAsText` を呼び出してURLの内容を取得する。
+         - `fn.Name` が `get_url_content` の場合、`urlReaderService.GetURLContentAsText` を呼び出してURLの内容を取得する。URLは `fn.Args["url"]` から取得する。
          - それ以外の場合（天気関連など）、`weatherService.HandleFunctionCall` を呼び出して処理を委譲する。
          - `toolResult` に結果を格納し、`functionCallProcessed` フラグを立てる。（エラーハンドリングも含む）
       9. ループ終了後、`functionCallProcessed` が `true` の場合:
@@ -143,8 +144,8 @@
   - 役割: URLの内容取得とテキスト抽出、および `get_url_content` Function Declaration の提供を担当する。
   - 処理:
     - `NewURLReaderService`: サービスの初期化。
-    - `GetURLContentAsText`: `curl` コマンドでURLの内容を取得し、`goquery` でHTMLをパースして主要なテキストを抽出する。抽出テキストは最大2000文字に制限される。
-    - `GetURLReaderFunctionDeclaration`: `get_url_content` 関数の定義を返す。
+    - `GetURLContentAsText(url string) (string, error)`: 指定されたURLの内容を `http.Get` で取得し、`goquery` でHTMLをパースして主要なテキストを抽出する。抽出テキストは最大2000文字に制限される。
+    - `GetURLReaderFunctionDeclaration() *genai.FunctionDeclaration`: `get_url_content` 関数の定義 (`FunctionDeclaration`) を返す。
 
 - HistoryManager (`history/history.go`, `history/duckdb_manager.go`)
   - 役割: Discordのスレッド（またはチャンネル）単位およびユーザー単位でのチャット履歴を管理する。DuckDBデータベースを使用して履歴を永続化する。
@@ -163,9 +164,9 @@
 - 設定サービス (`config/config.go`, `loader/model.go`, `discord/custom_prompt.go`)
   - 役割: 設定ファイル (`.env`, `json/model.json`, `json/custom_model.json`) の読み込みと管理を行う。
   - 処理:
-    - `config.LoadConfig()`: `.env` ファイルと `json/model.json` を読み込み、`Config` 構造体を返す。
-    - `loader.LoadModelConfig(filepath)`: `json/model.json` を読み込む。
-    - `discord/custom_prompt.go` 内の関数群: `json/custom_model.json` の読み書きを行う。Mutexによる排他制御を含む。
+    - `config.LoadConfig()`: `.env` ファイル、`json/model.json`、`json/custom_model.json` を読み込み、`Config` 構造体を返す。(`config/config.go`)
+    - `loader.LoadModelConfig(filepath)`: `json/model.json` を読み込む。(`loader/model.go`)
+    - `discord/custom_prompt.go` 内の関数群: `json/custom_model.json` の書き込み処理（設定、削除）を行う。Mutexによる排他制御を含む。カスタムプロンプトの取得は `config.Config` 経由で行う。
 
 - 監査ログサービス (`history/audit_log.go`)
   - 役割: Discordメッセージイベント（作成、更新、削除）をログファイル (`log/audit.log`) に記録する。
@@ -187,20 +188,21 @@
   - 役割: Discord Botの起動と設定、監査ログの初期化、シグナルハンドリングを行う。
   - 処理:
     - `history.InitAuditLog()`: 監査ログを初期化する。
-    - `config.LoadConfig()`: 環境変数と `json/model.json` を読み込み、設定をロードする。
+    - `config.LoadConfig()`: 環境変数、`json/model.json`、`json/custom_model.json` を読み込み、設定をロードする。
     - `discord.StartBot(cfg)`: Discord Botを起動する。
     - アプリケーション終了のためのシグナルハンドリングを行い、`history.CloseAuditLog()` を呼び出す。
 
 - config/config.go:
-  - 役割: `.env` ファイルと `json/model.json` の読み込みと管理を行う。
+  - 役割: `.env` ファイル、`json/model.json`、`json/custom_model.json` の読み込みと管理を一元的に行う。
   - 処理:
-    - `LoadConfig()`: `.env`ファイルを読み込み環境変数を設定し、`loader.LoadModelConfig` を呼び出して `json/model.json` を読み込み、`Config` 構造体を構築して返す。エラー発生時はエラーを返す。
+    - `LoadConfig()`: `.env`ファイルを読み込み環境変数を設定し、`loader.LoadModelConfig` を呼び出して `json/model.json` を、内部関数 `loadCustomPrompts` で `json/custom_model.json` を読み込み、`Config` 構造体を構築して返す。エラー発生時はエラーを返す。
+    - `CustomPromptConfig` 構造体を定義。
 
 - chat/chat.go:
   - 役割: `Service` インターフェースの主要な実装。LLM (Gemini, Ollama) API との通信、Gemini の Function Calling のディスパッチ（`WeatherService` および `URLReaderService` への委譲を含む）、応答生成のコアロジック、エラー時のフォールバック処理を担当。
   - 処理:
-    - `NewChat(cfg *config.Config, historyMgr history.HistoryManager)`: サービスと依存関係 (`WeatherService`, `URLReaderService` を含む) を初期化。`cfg.Model` から `ModelConfig` を取得して保持する。
-    - `GetResponse(userID, threadID, username, message, timestamp, prompt)`: 保持している `ModelConfig` を使用する。ユーザーからのメッセージ、スレッドID、タイムスタンプを受け取り、`ModelConfig` の設定に基づいて使用するLLMを決定。`historyMgr` を使用してスレッドIDに基づいた履歴を取得・保存する。Gemini API で 429 エラーが発生した場合のフォールバック処理などを行う。
+    - `NewChat(cfg *config.Config, historyMgr history.HistoryManager)`: サービスと依存関係 (`WeatherService`, `URLReaderService` を含む) を初期化。`cfg.Model` から `ModelConfig` を取得して保持する。`URLReaderService` から `get_url_content` の `FunctionDeclaration` を取得し、`WeatherService` のものと合わせて `genaiModel.Tools` に設定する。
+    - `GetResponse(userID, threadID, username, message, timestamp, prompt)`: 保持している `ModelConfig` を使用する。ユーザーからのメッセージ、スレッドID、タイムスタンプを受け取り、`ModelConfig` の設定に基づいて使用するLLMを決定。`historyMgr` を使用してスレッドIDに基づいた履歴を取得・保存する。Function Calling が発生した場合、`fn.Name` が `get_url_content` であれば `urlReaderService` に処理を委譲する。Gemini API で 429 エラーが発生した場合のフォールバック処理などを行う。
     - `Close()`: Geminiクライアントを閉じる。
 
 - chat/prompt.go:
@@ -227,8 +229,8 @@
   - 役割: `URLReaderService` の実装。URLの内容取得とテキスト抽出、および `get_url_content` Function Declaration の提供を担当する。
   - 処理:
     - `NewURLReaderService`: サービスの初期化。
-    - `GetURLContentAsText`: `curl` コマンドでURLの内容を取得し、`goquery` でHTMLをパースして主要なテキストを抽出する。抽出テキストは最大2000文字に制限される。
-    - `GetURLReaderFunctionDeclaration`: `get_url_content` 関数の定義を返す。
+    - `GetURLContentAsText(url string) (string, error)`: 指定されたURLの内容を `http.Get` で取得し、`goquery` でHTMLをパースして主要なテキストを抽出する。抽出テキストは最大2000文字に制限される。
+    - `GetURLReaderFunctionDeclaration() *genai.FunctionDeclaration`: `get_url_content` 関数の定義 (`FunctionDeclaration`) を返す。
 
 - chat/ollama.go:
   - 役割: Ollama LLM との連携に関するロジックを担当。
@@ -280,13 +282,13 @@
   - 役割: `/edit`コマンドの処理を行う。
   - 処理:
     - ユーザーから`/edit`コマンドを受け取り、`discord/custom_prompt.go` の `SetCustomPromptForUser` または `DeleteCustomPromptForUser` を呼び出してカスタムテンプレートを更新または削除する。
-    - 更新または削除の結果をEmbedで表示する。エラーハンドリングは `sendErrorResponse` を使用。`chatSvc` は引数に取るが未使用。
+    - 更新または削除の結果をEmbedで表示する。エラーハンドリングは `sendErrorResponse` を使用。引数として `*config.Config` を受け取るように変更（以前は `chat.Service` で未使用だった）。
 
 - discord/handler.go:
   - 役割: Discordのイベントハンドリングとコマンドディスパッチ、サービスの初期化を行う。
   - 処理:
-    - `setupHandlers(s *discordgo.Session, cfg *config.Config)`: Bot起動時に呼び出され、ログ設定、`DuckDBHistoryManager` と `ChatService` の初期化、コマンドハンドラの登録を行う。初期化された `HistoryManager` と `ChatService` を返す。`chat` パッケージとエラーロガーを共有する。
-  - `interactionCreate` ハンドラ: 受け取ったインタラクションからスレッドID（スレッドでない場合はチャンネルID）を取得し、各コマンドハンドラ (`chatCommandHandler`, `resetCommandHandler`, `aboutCommandHandler`, `editCommandHandler`) に `cfg` や必要なサービスを渡す。DMからのインタラクションの場合は、`i.User` からユーザー情報を取得します。
+    - `setupHandlers(s *discordgo.Session, cfg *config.Config, chatSvc chat.Service, historyMgr history.HistoryManager)`: Bot起動時に呼び出され、ログ設定、`DuckDBHistoryManager` と `ChatService` の初期化、コマンドハンドラの登録を行う。初期化された `HistoryManager` と `ChatService` を返す。`chat` パッケージとエラーロガーを共有する。
+  - `interactionCreate` ハンドラ: 受け取ったインタラクションからスレッドID（スレッドでない場合はチャンネルID）を取得し、各コマンドハンドラ (`chatCommandHandler`, `resetCommandHandler`, `aboutCommandHandler`, `editCommandHandler`) に `cfg` や必要なサービスを渡す。`editCommandHandler` への引数が `cfg` に変更された。DMからのインタラクションの場合は、`i.User` からユーザー情報を取得します。
   - `onReady`: Bot準備完了時のログ出力。
   - `messageCreateHandler`: メッセージ作成イベントを処理します。DMの場合は `m.GuildID` が空文字列になることを利用してDMを判定し、`chatSvc.GetResponse` を呼び出して応答を生成し、DMで返信します。サーバー内メッセージの場合は監査ログに記録します。
   - `messageUpdateHandler`, `messageDeleteHandler`: メッセージの更新、削除イベントを `history.LogMessage*` を使って監査ログに記録する。
@@ -295,7 +297,7 @@
   - 役割: `/chat` コマンドの処理を行う。
   - 処理:
     - `chatCommandHandler(s, i, chatSvc, threadID, cfg)`: `cfg.Model` から `ModelConfig` を取得する。
-    - カスタムプロンプトを取得し、受け取った `threadID` と共に `chatSvc.GetResponse` を呼び出してLLMからの応答を取得し、結果をEmbedで表示する。
+    - `discord.GetCustomPromptForUser(cfg, username)` を使用してカスタムプロンプトを取得し、受け取った `threadID` と共に `chatSvc.GetResponse` を呼び出してLLMからの応答を取得し、結果をEmbedで表示する。
 
 - discord/reset_command.go:
   - 役割: `/reset` コマンドの処理を行う。
@@ -321,13 +323,10 @@
     - `splitToEmbedFields`: LLMからの応答テキストを受け取り、Discord Embedフィールドの文字数制限(1024文字)、フィールド数上限(5)、合計文字数上限(5120)に合わせて処理する。
     - 上限を超える場合は、文字化けしないようにルーン単位で分割し、複数のフィールドに分割して表示する。フィールド名は空にする。上限に達した場合は省略記号を追加する。
 
-- discord/types.go:
-  - 役割: `discord` パッケージ内で共通して使用される型定義を行う。
-  - 処理:
-    - `CustomPromptConfig`: `json/custom_model.json` の構造体定義。
-
 - discord/custom_prompt.go:
-  - 役割: `json/custom_model.json` の読み書きロジックをカプセル化する。
+  - 役割: `json/custom_model.json` の書き込み処理（設定、削除）と、ファイル直接読み込みのヘルパー関数を提供する。
   - 処理:
-    - `GetCustomPromptForUser`, `SetCustomPromptForUser`, `DeleteCustomPromptForUser`: ユーザー固有のプロンプトを取得、設定、削除する。
-    - `loadCustomPrompts`, `saveCustomPrompts`: ファイルの読み書きとMutexによる排他制御を行う。ファイルが存在しない場合やJSONパースエラー時のフォールバック処理を含む。
+    - `GetCustomPromptForUser(cfg *config.Config, username string)`: `config.Config` を引数に取り、そこからカスタムプロンプトを取得する。
+    - `SetCustomPromptForUser`, `DeleteCustomPromptForUser`: ユーザー固有のプロンプトを設定、削除する。内部で `loadCustomPromptsFromFile` を呼び出して最新のファイル内容を読み込んでから保存する。
+    - `loadCustomPromptsFromFile`: ファイルを直接読み込むヘルパー関数。通常は `config.LoadConfig` で読み込まれた設定を使用する。
+    - `saveCustomPrompts`: ファイルへの書き込みとMutexによる排他制御を行う。

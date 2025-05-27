@@ -111,7 +111,7 @@ func setupHandlers(s *discordgo.Session, cfg *config.Config, chatSvc chat.Servic
 		case "about":
 			aboutCommandHandler(s, i, cfg) // cfgを渡す
 		case "edit":
-			editCommandHandler(s, i, chatSvc)
+			editCommandHandler(s, i, cfg) // chatSvc を cfg に変更
 		}
 	})
 	return historyMgr, chatSvc, nil
