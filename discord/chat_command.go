@@ -44,19 +44,6 @@ func chatCommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate, ch
 	message := i.ApplicationCommandData().Options[0].StringValue()
 	timestamp := time.Now().Format(time.RFC3339)
 
-	var userPrompt string
-
-	// カスタムプロンプトの取得
-	// GetCustomPromptForUser はエラーを返さなくなったため、エラーハンドリングは不要
-	customPrompt, exists := GetCustomPromptForUser(cfg, username)
-	if exists {
-		log.Printf("ユーザー %s のカスタムプロンプトを使用します。", username)
-		userPrompt = customPrompt
-	} else {
-		log.Printf("ユーザー %s のカスタムプロンプトは見つかりませんでした。デフォルトプロンプトを使用します。", username)
-		userPrompt = modelCfg.GetPromptByUser(username) // modelCfg は cfg.Model と同じ
-	}
-
 	log.Printf("User %s (ID: %s, Thread: %s) sent message: %s ", username, userID, threadID, message)
 
 	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
@@ -66,7 +53,9 @@ func chatCommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate, ch
 		},
 	})
 
-	response, elapsed, modelName, err := chatSvc.GetResponse(userID, threadID, username, message, timestamp, userPrompt)
+	// GetResponse の最後の引数に cfg.Model.Prompts["default"] を渡す
+	// userPrompt のロジックは chat.GetResponse 内に移動したため削除
+	response, elapsed, modelName, err := chatSvc.GetResponse(userID, threadID, username, message, timestamp, cfg.Model.Prompts["default"])
 	if err != nil {
 		sendErrorResponse(s, i, fmt.Errorf("LLMからの応答取得中にエラーが発生しました: %w", err))
 		return

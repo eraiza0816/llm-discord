@@ -145,7 +145,8 @@ func messageCreateHandler(s *discordgo.Session, m *discordgo.MessageCreate, chat
 
 		// DMの場合、スレッドIDの代わりにチャンネルIDを使用し、プロンプトは空にする
 		// timestamp を string に変換し、戻り値を正しく受け取る
-		responseText, _, _, err := chatSvc.GetResponse(m.Author.ID, m.ChannelID, m.Author.Username, m.Content, m.Timestamp.Format(time.RFC3339), "")
+		// GetResponse の最後の引数に cfg.Model.Prompts["default"] を渡す
+		responseText, _, _, err := chatSvc.GetResponse(m.Author.ID, m.ChannelID, m.Author.Username, m.Content, m.Timestamp.Format(time.RFC3339), cfg.Model.Prompts["default"])
 		if err != nil {
 			log.Printf("DM応答生成エラー: %v", err)
 			s.ChannelMessageSend(m.ChannelID, "応答の生成中にエラーが発生しました。")
