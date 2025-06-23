@@ -28,12 +28,12 @@ type Chat struct {
 	genaiClient      *genai.Client
 	genaiModel       *genai.GenerativeModel
 	weatherService   WeatherService
-	urlReaderService URLReaderService // Added
+	urlReaderService URLReaderService
 	defaultPrompt    string
 	historyMgr       history.HistoryManager
 	tools            []*genai.Tool
 	modelConfig      *loader.ModelConfig
-	config           *config.Config // Added
+	config           *config.Config
 }
 
 func NewChat(cfg *config.Config, historyMgr history.HistoryManager) (Service, error) {
@@ -55,17 +55,17 @@ func NewChat(cfg *config.Config, historyMgr history.HistoryManager) (Service, er
 	genaiModel := genaiClient.GenerativeModel(initialGeminiModelName)
 
 	weatherService := NewWeatherService()
-	urlReaderService := NewURLReaderService() // Added
+	urlReaderService := NewURLReaderService()
 
 	weatherFuncDeclarations := weatherService.GetFunctionDeclarations()
-	urlReaderFuncDeclaration := urlReaderService.GetURLReaderFunctionDeclaration() // Added
+	urlReaderFuncDeclaration := urlReaderService.GetURLReaderFunctionDeclaration()
 
 	var allDeclarations []*genai.FunctionDeclaration
 	// weatherFuncDeclarations が nil でなく、要素を持つ場合のみ追加
 	if len(weatherFuncDeclarations) > 0 {
 		allDeclarations = append(allDeclarations, weatherFuncDeclarations...)
 	}
-	if urlReaderFuncDeclaration != nil { // Added
+	if urlReaderFuncDeclaration != nil {
 		allDeclarations = append(allDeclarations, urlReaderFuncDeclaration)
 	}
 
@@ -84,36 +84,18 @@ func NewChat(cfg *config.Config, historyMgr history.HistoryManager) (Service, er
 		genaiClient:      genaiClient,
 		genaiModel:       genaiModel,
 		weatherService:   weatherService,
-		urlReaderService: urlReaderService, // Added
+		urlReaderService: urlReaderService,
 		historyMgr:       historyMgr,
 		tools:            tools,
 		modelConfig:      initialModelCfg,
-		config:           cfg, // Added
+		config:           cfg,
 	}, nil
 }
 
 func (c *Chat) GetResponse(userID, threadID, username, message, timestamp, defaultSystemPrompt string) (string, float64, string, error) {
 	modelCfg := c.modelConfig
-	currentSystemPrompt := defaultSystemPrompt
-
-	// discord パッケージの GetCustomPromptForUser を使用してカスタムプロンプトを取得
-	// この関数は config.Config を必要とするため、Chat 構造体に config を保持するようにした
-	// また、GetCustomPromptForUser は discord パッケージにあるため、直接呼び出すのではなく、
-	// config 経由でアクセスするか、chat パッケージ側で同様の機能を持つようにする必要がある。
-	// ここでは、discord.GetCustomPromptForUser が config.CustomModel を見ることを前提とする。
-	// 実際には discord.GetCustomPromptForUser はエクスポートされていないので、
-	// config.CustomModel を直接参照する形にするか、GetCustomPromptForUser を chat パッケージに移動またはエクスポートする必要がある。
-	// ここでは、config.CustomModel を直接参照する形で実装を進める。
-	if c.config != nil && c.config.CustomModel != nil {
-		if customPrompt, exists := c.config.CustomModel.Prompts[username]; exists {
-			log.Printf("Using custom prompt for user %s", username)
-			currentSystemPrompt = customPrompt
-		} else {
-			log.Printf("No custom prompt found for user %s, using default system prompt.", username)
-		}
-	} else {
-		log.Println("CustomModel config is nil, using default system prompt.")
-	}
+	currentSystemPrompt := modelCfg.GetPromptByUser(username)
+	log.Printf("System prompt for user %s: %s", username, currentSystemPrompt)
 
 
 	// prompt.go の buildFullInput を使用して、LLMへの完全な入力文字列を構築

@@ -1,4 +1,6 @@
 ## 変更履歴
+- 2025/06/24: `model.json` のプロンプト読み込み処理を修正。
+    - `chat/chat.go`: `GetResponse` 関数が、ユーザー固有のプロンプトを `model.json` から正しく読み込むように修正。従来は `custom_model.json` のみを參照していた問題を解決。
 - 2025/05/27: リファクタリング：設定管理の改善。
     - `config/config.go`:
         - `json/custom_model.json` の読み込み処理を追加し、すべての設定ファイル (`.env`, `json/model.json`, `json/custom_model.json`) の読み込みをここに集約。
