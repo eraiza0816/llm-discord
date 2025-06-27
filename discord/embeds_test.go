@@ -1,10 +1,11 @@
-package discord
+package discord_test
 
 import (
 	"strings"
 	"testing"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/eraiza0816/llm-discord/discord"
 )
 
 func TestSplitToEmbedFields(t *testing.T) {
@@ -53,20 +54,36 @@ func TestSplitToEmbedFields(t *testing.T) {
 			expectedValues: []string{strings.Repeat("1", maxLen), strings.Repeat("2", maxLen), "333"},
 		},
 		{
-			name:           "String with multi-byte characters",
-			inputText:      strings.Repeat("あ", maxLen/3) + strings.Repeat("い", maxLen/3) + strings.Repeat("う", maxLen/3) + "え", // maxLen を超えるように調整
-			expectedNumFields: 2, // バイト数ではなく文字数で分割されるはずなので、maxLen文字ずつ区切られる
-			// 期待値の計算は少し複雑になるので、フィールド数と最初のフィールドの開始文字だけ確認
-			// expectedValues: []string{strings.Repeat("あ", maxLen/3) + strings.Repeat("い", maxLen/3) + ... }, // 正確な値は省略
+			name:              "String with multi-byte characters slightly over",
+			inputText:         strings.Repeat("あ", 1024) + "い",
+			expectedNumFields: 2,
+			expectedValues:    []string{strings.Repeat("あ", 1024), "い"},
+		},
+		{
+			name:              "String with multi-byte characters exactly 2 * maxLen",
+			inputText:         strings.Repeat("あ", 1024) + strings.Repeat("い", 1024),
+			expectedNumFields: 2,
+			expectedValues:    []string{strings.Repeat("あ", 1024), strings.Repeat("い", 1024)},
+		},
+		{
+			name:              "String exceeding total length limit",
+			inputText:         strings.Repeat("a", 1024) + strings.Repeat("b", 1024) + strings.Repeat("c", 1024),
+			expectedNumFields: 3,
+			expectedValues: []string{
+				strings.Repeat("a", 1024),
+				strings.Repeat("b", 1024),
+				strings.Repeat("c", 3000-1024-1024-3) + "...",
+			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fields := splitToEmbedFields(tt.inputText)
+			var fields []*discordgo.MessageEmbedField
+			fields = discord.SplitToEmbedFields(tt.inputText)
 
 			if len(fields) != tt.expectedNumFields {
-				t.Errorf("splitToEmbedFields(%q) returned %d fields, want %d", tt.inputText, len(fields), tt.expectedNumFields)
+				t.Errorf("SplitToEmbedFields(%q) returned %d fields, want %d", tt.inputText, len(fields), tt.expectedNumFields)
 			}
 
 			// フィールドの値もチェック（期待値が設定されている場合）
@@ -93,8 +110,11 @@ func TestSplitToEmbedFields(t *testing.T) {
 			}
 
 			// マルチバイト文字のテストケースの追加チェック（最初のフィールドの開始文字）
-			if tt.name == "String with multi-byte characters" && len(fields) > 0 {
+			if strings.HasPrefix(tt.name, "String with multi-byte characters") && len(fields) > 0 {
 				if !strings.HasPrefix(fields[0].Value, "あ") {
 					t.Errorf("Multi-byte test case: First field should start with 'あ', but got %q", fields[0].Value[:10]+"...")
 				}
-				if tt.expectedNumFields > 1 && len(fields) > 1 {
+			}
+		})
+	}
+}

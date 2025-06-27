@@ -95,7 +95,7 @@ func NewChat(cfg *config.Config, historyMgr history.HistoryManager) (Service, er
 func (c *Chat) GetResponse(userID, threadID, username, message, timestamp, defaultSystemPrompt string) (string, float64, string, error) {
 	modelCfg := c.modelConfig
 	currentSystemPrompt := modelCfg.GetPromptByUser(username)
-	log.Printf("System prompt for user %s: %s", username, currentSystemPrompt)
+	// log.Printf("System prompt for user %s: %s", username, currentSystemPrompt)
 
 
 	// prompt.go の buildFullInput を使用して、LLMへの完全な入力文字列を構築

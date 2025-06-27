@@ -77,7 +77,7 @@ func chatCommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate, ch
 			Name:    modelCfg.Name,
 			IconURL: modelCfg.Icon,
 		},
-		Fields: splitToEmbedFields(response),
+		Fields: SplitToEmbedFields(response),
 		Color:  0xa8ffee,
 		Footer: &discordgo.MessageEmbedFooter{
 			Text: fmt.Sprintf("%vms %s", elapsed, modelName),

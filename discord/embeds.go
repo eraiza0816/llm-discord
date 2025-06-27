@@ -2,82 +2,81 @@ package discord
 
 import "github.com/bwmarrin/discordgo"
 
-func splitToEmbedFields(text string) []*discordgo.MessageEmbedField {
-	const maxFieldLength = 1024      // Discord の Embed Field Value の最大文字数
-	const maxTotalLength = 5120      // 全フィールドの合計文字数上限 (Discordの6000より少し余裕を持たせる)
-	const maxFields = 5              // フィールド数の上限
-	const ellipsis = "..."
-	const ellipsisLen = len(ellipsis)
-
-	var fields []*discordgo.MessageEmbedField
-	var currentTotalLength int
+// SplitToEmbedFields は、指定されたテキストをDiscordのEmbed Fieldの制約に合わせて分割します。
+//
+// 制約:
+// - 各フィールドの値は `maxFieldLength` 文字以下。
+// - フィールドの総数は `maxFields` 以下。
+// - 全フィールドの合計文字数は `maxTotalLength` 以下。
+//
+// 分割ロジック:
+// 1. テキストをルーン（文字）単位で処理します。
+// 2. テキストが `maxFieldLength` を超える場合、`maxFieldLength` 文字ずつに分割し、それぞれを新しいフィールドとして追加します。
+// 3. フィールド数や合計文字数の上限に達した場合、最後のフィールドの末尾に省略記号 "..." を付けて処理を終了します。
+func SplitToEmbedFields(text string) []*discordgo.MessageEmbedField {
+	const (
+		maxFieldLength = 1024 // Discord の Embed Field Value の最大文字数
+		maxTotalLength = 3000 // 全フィールドの合計文字数上限
+		maxFields      = 5    // フィールド数の上限
+		ellipsis       = "..."
+		ellipsisLen    = len(ellipsis)
+	)
 
 	if text == "" {
-		return fields // 空の場合は空のスライスを返す
+		return nil
 	}
 
-	remainingText := text
-	for len(remainingText) > 0 && len(fields) < maxFields {
-		var chunk string
-		chunkLength := 0
-		runes := []rune(remainingText)
-		remainingLength := len(runes)
+	var fields []*discordgo.MessageEmbedField
+	runes := []rune(text)
+	currentTotalLength := 0
 
-		if remainingLength <= maxFieldLength {
-			// 残り全てが1フィールドに収まる場合
-			chunkLength = remainingLength
-		} else {
-			// 1024文字で区切る場合
-			chunkLength = maxFieldLength
+	for len(runes) > 0 && len(fields) < maxFields {
+		// チャンクの長さを決定
+		chunkLen := len(runes)
+		if chunkLen > maxFieldLength {
+			chunkLen = maxFieldLength
 		}
 
-		// 次のチャンクを追加すると合計文字数制限を超えるかチェック
-		if currentTotalLength+chunkLength > maxTotalLength {
-			// 制限を超える場合、追加可能な文字数でチャンクを切り詰める
-			allowedLength := maxTotalLength - currentTotalLength
-			if allowedLength <= ellipsisLen {
-				// 省略記号すら入らない場合はループを終了
+		// チャンクを決定
+		chunk := string(runes[:chunkLen])
+
+		// フィールド数が上限に達し、かつまだ残りテキストがある場合
+		isLastField := len(fields) == maxFields-1
+		hasMoreText := len(runes) > chunkLen
+		if isLastField && hasMoreText {
+			// 省略記号を入れるためにチャンクを切り詰める
+			chunk = string(runes[:maxFieldLength-ellipsisLen]) + ellipsis
+			// これが最後のフィールドになる
+			runes = nil
+		} else {
+			runes = runes[chunkLen:]
+		}
+
+		// 合計文字数制限のチェック
+		if currentTotalLength+len([]rune(chunk)) > maxTotalLength {
+			// 現在のチャンクを追加すると制限を超える
+			allowedLen := maxTotalLength - currentTotalLength
+			if allowedLen <= ellipsisLen {
+				// 省略記号すら入らない場合は、ここで終了
 				break
 			}
-			chunkLength = allowedLength - ellipsisLen // 省略記号の分を引く
-			// chunkLength 分のルーンを取り出して文字列に変換
-			chunk = string(runes[:chunkLength]) + ellipsis
-			remainingText = "" // ループを終了させる
-		} else {
-			// 制限を超えない場合
-			// chunkLength 分のルーンを取り出して文字列に変換
-			chunk = string(runes[:chunkLength])
-			// 残りのルーンを文字列に変換
-			remainingText = string(runes[chunkLength:])
-		}
-
-		// フィールド数が上限に達し、かつ残りテキストがある場合は、最後のチャンクに省略記号を追加
-		if len(fields) == maxFields-1 && len(remainingText) > 0 {
-			chunkRunes := []rune(chunk) // 現在のチャンクをルーンに変換
-			currentChunkLen := len(chunkRunes)
-			if currentChunkLen > maxFieldLength-ellipsisLen {
-				// 省略記号を追加するために末尾を削る (ルーン単位で)
-				chunk = string(chunkRunes[:maxFieldLength-ellipsisLen]) + ellipsis
-			} else if currentChunkLen <= maxFieldLength { // 削る必要がない場合でも省略記号を追加
-				chunk += ellipsis
-			}
-			// else のケース (currentChunkLen > maxFieldLength) は上の totalLength チェックで弾かれているはず
-			remainingText = "" // ループを終了させる
+			// 許容文字数に合わせてチャンクを切り詰めて省略記号を追加
+			chunkRunes := []rune(chunk)
+			chunk = string(chunkRunes[:allowedLen-ellipsisLen]) + ellipsis
+			// これが最後のフィールドになる
+			runes = nil
 		}
 
 		fields = append(fields, &discordgo.MessageEmbedField{
-			Name:   "", // フィールド名を空にする
-			Value:  chunk,
-			Inline: false,
+			Value: chunk,
 		})
-		currentTotalLength += len([]rune(chunk)) // runeの数でカウント
+		currentTotalLength += len([]rune(chunk))
 
-		// 合計文字数制限に達したらループ終了
-		if currentTotalLength >= maxTotalLength {
+		// runesがnilに設定されたらループを抜ける
+		if runes == nil {
 			break
 		}
 	}
 
 	return fields
 }
-
