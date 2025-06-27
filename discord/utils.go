@@ -21,6 +21,11 @@ func sendErrorResponse(s *discordgo.Session, i *discordgo.InteractionCreate, err
 	}
 
 	content := fmt.Sprintf("エラーが発生しました: %v", err)
+	if err != nil && (err.Error() == "HTTP 500 Internal Server Error, {\"message\": \"500: Internal Server Error\", \"code\": 0}" ||
+		(len(err.Error()) >= 20 && err.Error()[len(err.Error())-20:] == "Internal Server Error")) {
+		content += "\n返事の文章が長すぎたみたい…"
+	}
+
 	_, editErr := s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
 		Content: &content,
 		Embeds:  &[]*discordgo.MessageEmbed{},

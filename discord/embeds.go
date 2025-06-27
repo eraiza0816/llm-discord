@@ -16,7 +16,7 @@ import "github.com/bwmarrin/discordgo"
 func SplitToEmbedFields(text string) []*discordgo.MessageEmbedField {
 	const (
 		maxFieldLength = 1024 // Discord の Embed Field Value の最大文字数
-		maxTotalLength = 3000 // 全フィールドの合計文字数上限
+		maxTotalLength = 3500 // 全フィールドの合計文字数上限
 		maxFields      = 5    // フィールド数の上限
 		ellipsis       = "..."
 		ellipsisLen    = len(ellipsis)

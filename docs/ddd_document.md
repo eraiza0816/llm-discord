@@ -314,7 +314,7 @@
   - 役割: Discord関連の共通ユーティリティ関数を提供する。
   - 処理:
     - `errorLogger` (グローバル変数), `SetErrorLogger`: エラーロガーの設定。
-    - `sendErrorResponse`: エラーメッセージをContentに設定して応答する。
+    - `sendErrorResponse`: エラーメッセージをContentに設定して応答する。HTTP 500 Internal Server Errorの場合、「返事の文章が長すぎたみたい…」というメッセージを追加する。
     - `sendEphemeralErrorResponse`: 本人にのみ見えるエラー応答を送信する。
 
 - discord/embeds.go:
