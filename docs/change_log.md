@@ -1,4 +1,18 @@
 ## 変更履歴
+- 2025/06/27: Botとの会話に関する挙動を修正。
+    - Botからのメッセージに対して、3回までは応答し、4回目以降は応答しないように変更。
+    - Botとの会話では、使用するLLMをOllamaに強制的に切り替えるように変更。
+    - `discord/handler.go`: メッセージ作成者がBotかどうかを判定し、下位の関数に情報を伝達するように修正。
+    - `chat/chat.go`: `GetResponse` メソッドでBot判定フラグを受け取り、会話回数チェックとモデル切り替えを行うロジックを追加。
+    - `history/history.go`: `HistoryManager` インターフェースに `GetBotConversationCount` を追加。
+    - `history/duckdb_manager.go`: `GetBotConversationCount` を実装し、特定ユーザーとの会話回数をデータベースから取得できるようにした。
+- 2025/06/27: TDDによるリファクタリングを実施。
+    - `discord/handler.go`: `messageCreateHandler`のロジックをリファクタリング。
+        - `DiscordSession`インターフェースを導入し、`discordgo.Session`への依存を分離。これにより、ユニットテストが可能になった。
+        - メッセージの種類を判別する`classifyMessageType`と、スレッドIDを解決する`resolveThreadID`を導入し、責務を明確化した。
+        - テスト容易な`handleMessageEvent`関数に処理を委譲する構造に変更し、保守性を向上させた。
+    - `discord/session.go`: `DiscordSession`インターフェースと、`discordgo.Session`をラップする`discordgoSession`構造体を新規作成。
+    - `discord/handler_test.go`: `handleMessageEvent`と`resolveThreadID`に対するユニットテストを新規作成。
 - 2025/06/27: DiscordのInteractionResponseEditでHTTP 500エラーが発生した場合に、ユーザーに「返事の文章が長すぎたみたい…」というメッセージを送信するように修正。
 - 2025/06/27: TDDによるリファクタリングを実施。
     - `discord/embeds.go`: `SplitToEmbedFields` 関数をリファクタリングし、ネストした複雑なロジックを解消。可読性と保守性を向上させた。

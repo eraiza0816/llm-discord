@@ -20,7 +20,7 @@ import (
 var errorLogger *log.Logger
 
 type Service interface {
-	GetResponse(userID, threadID, username, message, timestamp, prompt string) (string, float64, string, error)
+	GetResponse(userID, threadID, username, message, timestamp, prompt string, isBot bool) (string, float64, string, error)
 	Close()
 }
 
@@ -92,8 +92,29 @@ func NewChat(cfg *config.Config, historyMgr history.HistoryManager) (Service, er
 	}, nil
 }
 
-func (c *Chat) GetResponse(userID, threadID, username, message, timestamp, defaultSystemPrompt string) (string, float64, string, error) {
+func (c *Chat) GetResponse(userID, threadID, username, message, timestamp, defaultSystemPrompt string, isBot bool) (string, float64, string, error) {
+	if isBot {
+		// Botとの会話履歴を取得
+		count, err := c.historyMgr.GetBotConversationCount(threadID, userID)
+		if err != nil {
+			errorLogger.Printf("Failed to get bot conversation count: %v", err)
+			// エラーが発生しても処理は続行するが、ログには残す
+		}
+
+		// 3回以上会話している場合は応答しない
+		if count >= 3 {
+			log.Printf("Botとの会話が3回に達したため、応答を中断します。UserID: %s, ThreadID: %s", userID, threadID)
+			return "", 0, "", nil
+		}
+	}
+
 	modelCfg := c.modelConfig
+	if isBot {
+		// Botの場合はOllamaを強制的に使用する
+		log.Printf("Botとの対話のため、Ollamaモデルを強制的に使用します。UserID: %s", userID)
+		modelCfg.Ollama.Enabled = true
+	}
+
 	currentSystemPrompt := modelCfg.GetPromptByUser(username)
 	// log.Printf("System prompt for user %s: %s", username, currentSystemPrompt)
 

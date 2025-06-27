@@ -7,13 +7,15 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	_ "github.com/marcboeker/go-duckdb"
 )
 
 type DuckDBHistoryManager struct {
-	db *sql.DB
+	db    *sql.DB
+	mutex sync.Mutex
 }
 
 func NewDuckDBHistoryManager() (*DuckDBHistoryManager, error) {
@@ -147,9 +149,34 @@ func (m *DuckDBHistoryManager) ClearAllByThreadID(threadID string) error {
 }
 
 func (m *DuckDBHistoryManager) Close() error {
-	if m.db != nil {
-		log.Println("DuckDBデータベース接続を閉じます。")
-		return m.db.Close()
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+	return m.db.Close()
+}
+
+func (m *DuckDBHistoryManager) GetBotConversationCount(threadID, userID string) (int, error) {
+	var historyJSON string
+	querySQL := "SELECT history_json FROM thread_histories WHERE user_id = ? AND thread_id = ?;"
+	err := m.db.QueryRow(querySQL, userID, threadID).Scan(&historyJSON)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("履歴のクエリ実行に失敗しました: %w", err)
 	}
-	return nil
+
+	var history []HistoryMessage
+	if err := json.Unmarshal([]byte(historyJSON), &history); err != nil {
+		return 0, fmt.Errorf("履歴のJSONデシリアライズに失敗しました: %w", err)
+	}
+
+	// ユーザーのメッセージ数をカウントする
+	userMessageCount := 0
+	for _, msg := range history {
+		if msg.Role == "user" {
+			userMessageCount++
+		}
+	}
+
+	return userMessageCount, nil
 }

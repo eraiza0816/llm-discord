@@ -55,7 +55,7 @@ func chatCommandHandler(s *discordgo.Session, i *discordgo.InteractionCreate, ch
 
 	// GetResponse の最後の引数に cfg.Model.Prompts["default"] を渡す
 	// userPrompt のロジックは chat.GetResponse 内に移動したため削除
-	response, elapsed, modelName, err := chatSvc.GetResponse(userID, threadID, username, message, timestamp, cfg.Model.Prompts["default"])
+	response, elapsed, modelName, err := chatSvc.GetResponse(userID, threadID, username, message, timestamp, cfg.Model.Prompts["default"], false)
 	if err != nil {
 		sendErrorResponse(s, i, fmt.Errorf("LLMからの応答取得中にエラーが発生しました: %w", err))
 		return
