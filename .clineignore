@@ -1,6 +1,7 @@
 .env
 log/*.log
 json/model.json
+json/model.json.sample
 json/custom_model.json
 llm-discord
 data/*
