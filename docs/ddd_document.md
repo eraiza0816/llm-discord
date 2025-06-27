@@ -18,7 +18,6 @@
 - Otenki ASP情報提供機能: LLMがFunction Calling (`getOtenkiAspInfo`) を利用して、ユーザーがメッセージに「asp情報」と地点コードを含む場合に `zu2l` API (`GetOtenkiASP`) を呼び出してOtenki ASP情報を返します。
 - 地点検索機能: LLMがFunction Calling (`searchWeatherPoint`) を利用して、ユーザーがメッセージに「地点検索」とキーワードを含む場合に `zu2l` API (`GetWeatherPoint`) を呼び出して地点情報を返します。
 - URL内容理解機能: ユーザーが会話中にURLを提示すると、LLMがFunction Calling (`get_url_content`) を利用して `URLReaderService` を呼び出し、URLの主要なテキストコンテンツを取得し、内容を理解した上で応答します。
-- メッセージ監査ログ機能: Discordでのメッセージ作成、更新、削除イベントをログファイル (`log/audit.log`) に記録します。
 
 ## ドメインに関する用語（ユビキタス言語）
 
@@ -34,7 +33,6 @@
 - モデル設定 (ModelConfig): `json/model.json` から読み込まれるBotのLLMモデルや表示に関する基本設定。(`loader/model.go` で定義、`config/config.go` で読み込み)
 - カスタムプロンプト設定 (CustomPromptConfig): `json/custom_model.json` から読み書きされるユーザー固有のプロンプト設定。(`config/config.go` で定義・読み込み、`discord/custom_prompt.go` で書き込み処理)
 - スレッドID (ThreadID): Discordのスレッドまたはチャンネルの一意な識別子。履歴管理やコマンド処理の単位となる。
-- 監査ログ (AuditLog): メッセージの作成、更新、削除などのイベントを記録するログ。
 
 ## コンテキストマップ
 
@@ -43,20 +41,17 @@
   - コマンド処理: ユーザーからのコマンドの解析と実行
   - 設定管理: Botの設定の読み込みと管理 (`.env`, `json/model.json`, `json/custom_model.json`)
   - 履歴管理: Discordのスレッド（またはチャンネル）単位およびユーザー単位でのチャット履歴の永続化と取得 (DuckDBを使用)
-  - 監査ログ管理: Discordメッセージイベントの記録 (`log/audit.log`)
 - 境界づけられたコンテキスト:
   - Discord Bot: Discord APIとのインターフェース (`discord` パッケージ)。スレッドIDの取得、イベントハンドリング、コマンドディスパッチを行う。
   - LLMクライアント: LLM API (Gemini, Ollama) とのインターフェース (`chat` パッケージ)。Function Callingの処理、履歴の取得と保存を行う。
   - 設定ローダー: 設定ファイルの読み込み (`config`, `loader` パッケージ)
   - 履歴マネージャー: チャット履歴の管理 (`history` パッケージ)。DuckDBによる永続化、スレッドIDとユーザーIDに基づいた履歴操作。
-  - 監査ロガー: メッセージイベントのロギング (`history` パッケージ)。
 - 関係:
   - Discord BotはLLMクライアントを利用してチャット機能を提供します。
   - Discord Botはユーザーからのコマンドを受け付け、適切な処理を呼び出します。
   - LLMクライアントは履歴マネージャーを利用して対話履歴を取得・保存します。
   - Discord Botは設定ローダーから設定を読み込みます。
   - Discord Botは履歴マネージャーを利用して履歴をリセットします。
-  - Discord Botは監査ロガーを利用してメッセージイベントを記録します。
 
 ## ドメインモデル
 
@@ -88,7 +83,7 @@
   - アイコン (Icon): BotのアイコンURL。
   - プロンプト (Prompts): LLMへの指示文。ユーザー名をキーとしたマップ。
   - BOTの説明 (About): `/about` コマンドで表示されるBotの説明 (`loader.About` 型)。
-  - チャット履歴の最大サイズ (MaxHistorySize): `InMemoryHistoryManager` で保持するチャット履歴の最大ペア数。
+  - チャット履歴の最大サイズ (MaxHistorySize): （現在 `DuckDBHistoryManager` では未使用）
   - Ollama設定 (OllamaConfig): Ollama APIに関する設定 (`loader.OllamaConfig` 型)。
 
 - カスタムプロンプト設定 (CustomPromptConfig) (`config/config.go`)
@@ -100,29 +95,18 @@
   - 役割: LLM (Gemini, Ollama) とのやり取り、および Gemini の Function Calling 機能のディスパッチを担当する。天気関連の Function Calling 処理は `WeatherService` に、URL内容取得関連の Function Calling 処理は `URLReaderService` に委譲する。
   - 処理:
     - `NewChat(cfg *config.Config, historyMgr history.HistoryManager)` (`chat/chat.go`): Geminiクライアント、`HistoryManager`、`WeatherService`、`URLReaderService` を初期化する。`cfg.Model` から `ModelConfig` を取得し保持する。`WeatherService` および `URLReaderService` から取得した Function Declaration を含む `Tool` を定義し、初期 Gemini モデルに設定する。
-    - `GetResponse(userID, threadID, username, message, timestamp, prompt)` (`chat/chat.go`):
-      1. 保持している `ModelConfig` を使用する。
-      2. `buildFullInput` (`chat/prompt.go`) を呼び出して、プロンプト、現在日時情報、ツール指示（`get_url_content`、天気関連を含む）、履歴、ユーザーメッセージを結合した入力文字列を生成する。
-      3. `ModelConfig.Ollama.Enabled` が `true` の場合、`getOllamaResponse` (`chat/ollama.go`) を呼び出して Ollama にリクエストを送信する。
-      4. `ModelConfig.Ollama.Enabled` が `false` の場合、`ModelConfig.ModelName` を使用して Gemini にリクエストを送信する (`genaiModel.GenerateContent`)。
-      5. Gemini API から 429 (Quota Exceeded) エラーが返された場合:
-         - `ModelConfig.SecondaryModelName` が設定されていれば、そのモデルで Gemini API に再リクエストする。
-         - 再リクエストも失敗した場合、または `SecondaryModelName` が未設定の場合で、かつ `ModelConfig.Ollama.Enabled` が `true` であれば、`getOllamaResponse` を呼び出して Ollama にフォールバックする。
-         - 上記いずれのフォールバックも実行できない場合は、エラーを返す。
-      6. Gemini からの応答 (`resp.Candidates[0].Content.Parts`) をループで確認する。
-      7. 応答パーツの中に `genai.Text` 型が見つかった場合、その内容を `llmIntroText` バッファに追記する。
-      8. 応答パーツの中に `genai.FunctionCall` 型が見つかった場合:
-         - `fn.Name` が `get_url_content` の場合、`urlReaderService.GetURLContentAsText` を呼び出してURLの内容を取得する。URLは `fn.Args["url"]` から取得する。
-         - それ以外の場合（天気関連など）、`weatherService.HandleFunctionCall` を呼び出して処理を委譲する。
-         - `toolResult` に結果を格納し、`functionCallProcessed` フラグを立てる。（エラーハンドリングも含む）
-      9. ループ終了後、`functionCallProcessed` が `true` の場合:
-         - `toolResult` を含む `FunctionResponse` を作成し、再度 `genaiModel.GenerateContent` を呼び出してLLMに最終的な応答を生成させる。
-         - 生成された応答を `historyMgr.Add` で履歴に追加する。
-         - 生成された応答を `return` する。
-      10. `functionCallProcessed` が `false` の場合 (通常のテキスト応答):
-          - `llmIntroText` を取得する (空の場合は `getResponseText` (`chat/utils.go`) でフォールバック)。
-          - 応答を `historyMgr.Add` で履歴に追加する。
-          - テキスト応答を `return` する (source は実際に使用されたモデル名)。
+    - `GetResponse(userID, threadID, username, message, timestamp, prompt, isBot)` (`chat/chat.go`):
+      1. `isBot` が `true` の場合、Bot同士の会話とみなし、会話回数が3回以上なら応答を中断する。また、強制的にOllamaモデルを使用する。
+      2. `buildFullInput` (`chat/prompt.go`) を呼び出して、プロンプト、履歴、ユーザーメッセージ等を結合した入力文字列を生成する。
+      3. `ModelConfig.Ollama.Enabled` が `true` の場合、`getOllamaResponse` (`chat/ollama.go`) を呼び出してOllamaに応答を要求する。
+      4. `ModelConfig.Ollama.Enabled` が `false` の場合、Gemini APIに応答を要求する (`genaiModel.GenerateContent`)。
+      5. Gemini APIから429 (Quota Exceeded) エラーが返された場合、`SecondaryModelName` での再試行、それでも失敗すればOllamaへのフォールバックを試みる。
+      6. Geminiからの応答に `FunctionCall` が含まれる場合:
+         - `fn.Name` に応じて `urlReaderService` または `weatherService` に処理を委譲し、ツールの実行結果を取得する。
+         - ツールの実行結果を含めて再度Gemini APIを呼び出し、最終的な自然言語の応答を生成させる。
+         - 生成された応答を履歴に追加し、返す。
+      7. `FunctionCall` がない場合（通常のテキスト応答）:
+         - 応答テキストを抽出し、履歴に追加して返す。
     - `Close()` (`chat/chat.go`): Geminiクライアントを閉じる。
     - `buildFullInput` (`chat/prompt.go`): LLMへの入力文字列を構築する。履歴のロール名 "model" を "assistant" に変換する。
     - `getResponseText` (`chat/utils.go`): 応答テキスト抽出ヘルパー。
@@ -158,8 +142,6 @@
   - 実装 (`history.DuckDBHistoryManager`):
     - DuckDBデータベースへの接続、テーブル作成、CRUD操作を実装。
     - `thread_histories` テーブル (thread_id, user_id, history_json, last_updated_at) を使用。
-  - 実装 (`history.InMemoryHistoryManager`):
-    - ユーザーID単位のメモリ上履歴管理。スレッドIDはダミー引数として受け取るが使用しない。履歴は最大サイズを超えると古いものからペアで削除される。テスト用などに利用。
 
 - 設定サービス (`config/config.go`, `loader/model.go`, `discord/custom_prompt.go`)
   - 役割: 設定ファイル (`.env`, `json/model.json`, `json/custom_model.json`) の読み込みと管理を行う。
@@ -168,29 +150,15 @@
     - `loader.LoadModelConfig(filepath)`: `json/model.json` を読み込む。(`loader/model.go`)
     - `discord/custom_prompt.go` 内の関数群: `json/custom_model.json` の書き込み処理（設定、削除）を行う。Mutexによる排他制御を含む。カスタムプロンプトの取得は `config.Config` 経由で行う。
 
-- 監査ログサービス (`history/audit_log.go`)
-  - 役割: Discordメッセージイベント（作成、更新、削除）をログファイル (`log/audit.log`) に記録する。
-  - 処理:
-    - `InitAuditLog`: 監査ログファイルを初期化する。
-    - `LogMessageCreate`, `LogMessageUpdate`, `LogMessageDelete`: 各イベントをログに書き込む。
-    - `CloseAuditLog`: 監査ログファイルを閉じる。
-
-### ドメインイベント
-
-ドメインイベントとは、ドメイン内で発生した過去の重要な出来事を表すオブジェクトです。例えば、「ユーザーがチャットを開始した」「プロンプトが更新された」などが考えられます。
-これらのイベントは、システムの他の部分に影響を与えたり、特定のビジネスロジックをトリガーしたりする可能性があります。
-
-現状のコードベースでは、このようなドメインイベントを明示的に定義し、発行・購読するような仕組みは見受けられません。そのため、「現状、明示的なドメインイベントは定義されていません。」と記載しています。
 
 ## プログラムファイルの詳細
 
 - main.go:
-  - 役割: Discord Botの起動と設定、監査ログの初期化、シグナルハンドリングを行う。
+  - 役割: Discord Botの起動と設定、シグナルハンドリングを行う。
   - 処理:
-    - `history.InitAuditLog()`: 監査ログを初期化する。
     - `config.LoadConfig()`: 環境変数、`json/model.json`、`json/custom_model.json` を読み込み、設定をロードする。
     - `discord.StartBot(cfg)`: Discord Botを起動する。
-    - アプリケーション終了のためのシグナルハンドリングを行い、`history.CloseAuditLog()` を呼び出す。
+    - アプリケーション終了のためのシグナルハンドリングを行う。
 
 - config/config.go:
   - 役割: `.env` ファイル、`json/model.json`、`json/custom_model.json` の読み込みと管理を一元的に行う。
@@ -199,11 +167,11 @@
     - `CustomPromptConfig` 構造体を定義。
 
 - chat/chat.go:
-  - 役割: `Service` インターフェースの主要な実装。LLM (Gemini, Ollama) API との通信、Gemini の Function Calling のディスパッチ（`WeatherService` および `URLReaderService` への委譲を含む）、応答生成のコアロジック、エラー時のフォールバック処理を担当。
+  - 役割: `Service` インターフェースの主要な実装。LLM (Gemini, Ollama) API との通信、Gemini の Function Calling のディスパッチ、応答生成のコアロジック、エラー時のフォールバック処理を担当。
   - 処理:
-    - `NewChat(cfg *config.Config, historyMgr history.HistoryManager)`: サービスと依存関係 (`WeatherService`, `URLReaderService` を含む) を初期化。`cfg.Model` から `ModelConfig` を取得して保持する。`URLReaderService` から `get_url_content` の `FunctionDeclaration` を取得し、`WeatherService` のものと合わせて `genaiModel.Tools` に設定する。
-    - `GetResponse(userID, threadID, username, message, timestamp, prompt)`: 保持している `ModelConfig` を使用する。ユーザーからのメッセージ、スレッドID、タイムスタンプを受け取り、`ModelConfig` の設定に基づいて使用するLLMを決定。`historyMgr` を使用してスレッドIDに基づいた履歴を取得・保存する。Function Calling が発生した場合、`fn.Name` が `get_url_content` であれば `urlReaderService` に処理を委譲する。Gemini API で 429 エラーが発生した場合のフォールバック処理などを行う。
-    - `Close()`: Geminiクライアントを閉じる。
+    - `NewChat`: サービスと依存関係 (`WeatherService`, `URLReaderService` を含む) を初期化し、LLMに設定するツールを準備する。
+    - `GetResponse`: ユーザーからのメッセージを受け取り、LLMからの応答を返す。`isBot` フラグをチェックし、Bot同士の無限会話を防ぐ。設定に応じてGeminiまたはOllamaを使用し、Geminiのクォータ超過時にはフォールバック処理を行う。Function Callingが発生した場合は、関連サービスに処理を委譲し、その結果を用いて再度LLMから応答を生成する。
+    - `Close`: Geminiクライアントを閉じる。
 
 - chat/prompt.go:
   - 役割: LLM に送信するプロンプト（入力文字列）の構築ロジックを担当。
@@ -239,11 +207,11 @@
     - `parseOllamaStreamResponse`: Ollama からのストリーミング応答を1行ずつ解析し、`response` フィールドを連結する。
 
 - history/history.go:
-  - 役割: チャット履歴管理のインターフェース (`HistoryManager`) とインメモリ実装 (`InMemoryHistoryManager`)、および履歴メッセージの構造体 (`HistoryMessage`) を提供する。
+  - 役割: チャット履歴管理のインターフェース (`HistoryManager`) と、履歴メッセージの構造体 (`HistoryMessage`) を提供する。
   - 処理:
     - `HistoryMessage` 構造体: `Role` ("user" or "model") と `Content` を持つ。
-    - `HistoryManager` インターフェース: `Add`, `Get`, `Clear`, `ClearAllByThreadID`, `Close` メソッドを定義。各メソッドは `error` を返す。`Get` は `[]HistoryMessage` を返す。
-    - `InMemoryHistoryManager`: ユーザーID単位のメモリ上履歴管理。スレッドIDはダミー引数。履歴は最大サイズを超えると古いものからペアで削除。`Close` は何もしない。
+    - `HistoryManager` インターフェース: `Add`, `Get`, `Clear`, `ClearAllByThreadID`, `GetBotConversationCount`, `Close` メソッドを定義する。
+    - `InMemoryHistoryManager`: （テスト用または将来的な利用のための）インメモリでの履歴管理実装。
 
 - history/duckdb_manager.go:
   - 役割: `HistoryManager` インターフェースのDuckDB実装 (`DuckDBHistoryManager`) を提供する。
@@ -254,17 +222,11 @@
     - `Clear`, `ClearAllByThreadID`: スレッドIDとユーザーIDに基づいてDuckDBデータベース内の履歴を操作する。
     - `Close`: DuckDBデータベース接続を閉じる。
 
-- history/audit_log.go:
-  - 役割: Discordメッセージイベント（作成、更新、削除）をログファイル (`log/audit.log`) に記録する。
-  - 処理:
-    - `InitAuditLog`: 監査ログファイルを初期化する。
-    - `LogMessageCreate`, `LogMessageUpdate`, `LogMessageDelete`: 各イベントをログに書き込む。
-    - `CloseAuditLog`: 監査ログファイルを閉じる。
 
 - discord/discord.go:
   - 役割: Discord APIとのインターフェースを提供し、Botの起動、コマンド登録、リソース管理を行う。
   - 処理:
-    - `StartBot(cfg *config.Config)`: Discord Botを起動し、`setupHandlers` を呼び出してハンドラとサービスを初期化する。起動シーケンス中の各ステップでエラーハンドリングとログ出力を行う。`HistoryManager`, `ChatService`, Discordセッションの `Close` メソッドが `defer` で確実に呼び出されるようにする。main.goからのシグナルで終了処理が行われるまでブロックする。
+    - `StartBot(cfg *config.Config)`: Discord Botを起動し、`setupHandlers` を呼び出してハンドラとサービスを初期化する。起動シーケンス中の各ステップでエラーハンドリングとログ出力を行う。`HistoryManager`, `ChatService`, Discordセッションの `Close` メソッドが `defer` で確実に呼び出されるようにする。`main.go` からのシグナルで終了処理が行われるまでブロックする。
 
 - loader/model.go:
   - 役割: `json/model.json` の読み込み処理と構造体定義 (`ModelConfig`, `OllamaConfig`, `About`) を行う。
@@ -285,13 +247,15 @@
     - 更新または削除の結果をEmbedで表示する。エラーハンドリングは `sendErrorResponse` を使用。引数として `*config.Config` を受け取るように変更（以前は `chat.Service` で未使用だった）。
 
 - discord/handler.go:
-  - 役割: Discordのイベントハンドリングとコマンドディスパッチ、サービスの初期化を行う。
+  - 役割: Discordのイベントハンドリングとコマンドディスパッチ、サービスの初期化、メッセージ種別（通常、DM、返信）の判定と処理の振り分けを行う。
   - 処理:
-    - `setupHandlers(s *discordgo.Session, cfg *config.Config, chatSvc chat.Service, historyMgr history.HistoryManager)`: Bot起動時に呼び出され、ログ設定、`DuckDBHistoryManager` と `ChatService` の初期化、コマンドハンドラの登録を行う。初期化された `HistoryManager` と `ChatService` を返す。`chat` パッケージとエラーロガーを共有する。
-  - `interactionCreate` ハンドラ: 受け取ったインタラクションからスレッドID（スレッドでない場合はチャンネルID）を取得し、各コマンドハンドラ (`chatCommandHandler`, `resetCommandHandler`, `aboutCommandHandler`, `editCommandHandler`) に `cfg` や必要なサービスを渡す。`editCommandHandler` への引数が `cfg` に変更された。DMからのインタラクションの場合は、`i.User` からユーザー情報を取得します。
-  - `onReady`: Bot準備完了時のログ出力。
-  - `messageCreateHandler`: メッセージ作成イベントを処理します。DMの場合は `m.GuildID` が空文字列になることを利用してDMを判定し、`chatSvc.GetResponse` を呼び出して応答を生成し、DMで返信します。サーバー内メッセージの場合は監査ログに記録します。
-  - `messageUpdateHandler`, `messageDeleteHandler`: メッセージの更新、削除イベントを `history.LogMessage*` を使って監査ログに記録する。
+    - `setupHandlers`: Bot起動時に呼び出され、ログ設定、`DuckDBHistoryManager` と `ChatService` の初期化、コマンドハンドラの登録を行う。
+    - `interactionCreate` ハンドラ: スラッシュコマンドを処理し、適切なコマンドハンドラ (`chatCommandHandler` など) に処理を委譲する。
+    - `messageCreateHandler`: `classifyMessageType` を使ってメッセージを分類し、`handleMessageEvent` に処理を委譲する。
+    - `handleMessageEvent`: メッセージの種別に応じて `handleDirectMessage` や `handleReplyToBot` を呼び出す。
+    - `handleDirectMessage`: DMを受信した際にLLMからの応答を生成し、返信する。
+    - `handleReplyToBot`: Botへの返信を受信した際にLLMからの応答を生成し、返信する。
+    - `onReady`: Bot準備完了時のログ出力。
 
 - discord/chat_command.go:
   - 役割: `/chat` コマンドの処理を行う。

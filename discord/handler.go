@@ -165,20 +165,22 @@ func messageCreateHandler(s *discordgo.Session, m *discordgo.MessageCreate, chat
 		threadID = m.ChannelID // For DMs or other cases
 	}
 
-	handleMessageEvent(wrappedSession, m, chatSvc, cfg, messageType, threadID)
+	// Botかどうかの判定を追加
+	isBot := m.Author.Bot
+	handleMessageEvent(wrappedSession, m, chatSvc, cfg, messageType, threadID, isBot)
 }
 
 // handleMessageEvent is the testable core logic for handling message events.
-func handleMessageEvent(s DiscordSession, m *discordgo.MessageCreate, chatSvc chat.Service, cfg *config.Config, messageType MessageType, threadID string) {
+func handleMessageEvent(s DiscordSession, m *discordgo.MessageCreate, chatSvc chat.Service, cfg *config.Config, messageType MessageType, threadID string, isBot bool) {
 	switch messageType {
 	case MessageTypeSelf:
 		return // Do nothing
 	case MessageTypeDM:
 		log.Printf("DM受信: UserID=%s, Username=%s, Content=%s", m.Author.ID, m.Author.Username, m.Content)
-		handleDirectMessage(s, m, chatSvc, cfg)
+		handleDirectMessage(s, m, chatSvc, cfg, isBot)
 	case MessageTypeReply:
 		log.Printf("Botへの返信を受信: UserID=%s, Username=%s, Content=%s, ReferencedMessageID=%s", m.Author.ID, m.Author.Username, m.Content, m.ReferencedMessage.ID)
-		handleReplyToBot(s, m, chatSvc, cfg, threadID)
+		handleReplyToBot(s, m, chatSvc, cfg, threadID, isBot)
 	case MessageTypeNormal:
 		jst := m.Timestamp
 		err := history.LogMessageCreate(
@@ -237,7 +239,7 @@ func japanStandardTime() time.Time {
 }
 
 // handleDirectMessage はDMに対する応答を処理します
-func handleDirectMessage(s DiscordSession, m *discordgo.MessageCreate, chatSvc chat.Service, cfg *config.Config) {
+func handleDirectMessage(s DiscordSession, m *discordgo.MessageCreate, chatSvc chat.Service, cfg *config.Config, isBot bool) {
 	if chatSvc == nil {
 		log.Println("DM処理エラー: chatSvcがnilです")
 		s.ChannelMessageSend(m.ChannelID, "内部エラーにより応答できませんでした。")
@@ -249,7 +251,7 @@ func handleDirectMessage(s DiscordSession, m *discordgo.MessageCreate, chatSvc c
 		return
 	}
 
-	responseText, _, _, err := chatSvc.GetResponse(m.Author.ID, m.ChannelID, m.Author.Username, m.Content, m.Timestamp.Format(time.RFC3339), cfg.Model.Prompts["default"])
+	responseText, _, _, err := chatSvc.GetResponse(m.Author.ID, m.ChannelID, m.Author.Username, m.Content, m.Timestamp.Format(time.RFC3339), cfg.Model.Prompts["default"], isBot)
 	if err != nil {
 		log.Printf("DM応答生成エラー: %v", err)
 		s.ChannelMessageSend(m.ChannelID, "応答の生成中にエラーが発生しました。")
@@ -299,7 +301,7 @@ func resolveThreadID(s DiscordSession, channelID string) string {
 }
 
 // handleReplyToBot はBotへの返信に対する応答を処理します
-func handleReplyToBot(s DiscordSession, m *discordgo.MessageCreate, chatSvc chat.Service, cfg *config.Config, threadID string) {
+func handleReplyToBot(s DiscordSession, m *discordgo.MessageCreate, chatSvc chat.Service, cfg *config.Config, threadID string, isBot bool) {
 	if chatSvc == nil {
 		log.Println("Botへの返信処理エラー: chatSvcがnilです")
 		s.ChannelMessageSend(m.ChannelID, "内部エラーにより応答できませんでした。")
@@ -312,7 +314,7 @@ func handleReplyToBot(s DiscordSession, m *discordgo.MessageCreate, chatSvc chat
 	}
 
 	// 応答を生成
-	responseText, _, _, err := chatSvc.GetResponse(m.Author.ID, threadID, m.Author.Username, m.Content, m.Timestamp.Format(time.RFC3339), cfg.Model.Prompts["default"])
+	responseText, _, _, err := chatSvc.GetResponse(m.Author.ID, threadID, m.Author.Username, m.Content, m.Timestamp.Format(time.RFC3339), cfg.Model.Prompts["default"], isBot)
 	if err != nil {
 		log.Printf("Botへの返信応答生成エラー: %v", err)
 		s.ChannelMessageSend(m.ChannelID, "応答の生成中にエラーが発生しました。")
