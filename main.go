@@ -13,9 +13,13 @@ import (
 
 func main() {
 	if err := history.InitAuditLog(); err != nil {
-		log.Fatalf("Failed to initialize audit log: %v", err)
+		log.Fatalf("Failed to initialize log: %v", err)
 	}
 	defer history.CloseAuditLog()
+
+	downloadDir := "data/downloads/images"
+	history.StartAuditLogMonitor(downloadDir)
+	defer history.StopAuditLogMonitor()
 
 	cfg, err := config.LoadConfig()
 	if err != nil {
