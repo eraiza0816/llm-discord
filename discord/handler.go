@@ -149,6 +149,15 @@ func classifyMessageType(s *discordgo.Session, m *discordgo.MessageCreate) Messa
 	return MessageTypeNormal
 }
 
+// extractAttachmentURLs extracts URLs from message attachments.
+func extractAttachmentURLs(attachments []*discordgo.MessageAttachment) []string {
+	urls := make([]string, 0, len(attachments))
+	for _, att := range attachments {
+		urls = append(urls, att.URL)
+	}
+	return urls
+}
+
 // messageCreateHandler is the raw handler for discordgo's MessageCreate event.
 // It classifies the message, resolves the thread ID, and delegates to the testable handleMessageEvent.
 func messageCreateHandler(s *discordgo.Session, m *discordgo.MessageCreate, chatSvc chat.Service, cfg *config.Config) {
@@ -183,6 +192,7 @@ func handleMessageEvent(s DiscordSession, m *discordgo.MessageCreate, chatSvc ch
 		handleReplyToBot(s, m, chatSvc, cfg, threadID, isBot)
 	case MessageTypeNormal:
 		jst := m.Timestamp
+		attachments := extractAttachmentURLs(m.Attachments)
 		err := history.LogMessageCreate(
 			m.ID,
 			m.ChannelID,
@@ -190,6 +200,7 @@ func handleMessageEvent(s DiscordSession, m *discordgo.MessageCreate, chatSvc ch
 			m.Author.ID,
 			m.Author.Username,
 			m.Content,
+			attachments,
 			jst,
 		)
 		if err != nil {
@@ -276,6 +287,7 @@ func handleDirectMessage(s DiscordSession, m *discordgo.MessageCreate, chatSvc c
 		m.Author.ID,
 		m.Author.Username,
 		m.Content,
+		extractAttachmentURLs(m.Attachments),
 		jst,
 	)
 	if err != nil {
@@ -341,6 +353,7 @@ func handleReplyToBot(s DiscordSession, m *discordgo.MessageCreate, chatSvc chat
 		m.Author.ID,
 		m.Author.Username,
 		m.Content,
+		extractAttachmentURLs(m.Attachments),
 		jst,
 	)
 	if err != nil {
