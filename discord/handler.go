@@ -105,13 +105,13 @@ func setupHandlers(s *discordgo.Session, cfg *config.Config, chatSvc chat.Servic
 
 		switch i.ApplicationCommandData().Name {
 		case "chat":
-			chatCommandHandler(s, i, chatSvc, threadID, cfg) // cfgを渡す
+			chatCommandHandler(s, i, chatSvc, threadID, cfg)
 		case "reset":
 			resetCommandHandler(s, i, historyMgr, threadID)
 		case "about":
-			aboutCommandHandler(s, i, cfg) // cfgを渡す
+			aboutCommandHandler(s, i, cfg)
 		case "edit":
-			editCommandHandler(s, i, cfg) // chatSvc を cfg に変更
+			editCommandHandler(s, i, cfg)
 		}
 	})
 	return historyMgr, chatSvc, nil
@@ -121,77 +121,91 @@ func onReady(s *discordgo.Session, event *discordgo.Ready) {
 	log.Printf("Bot is ready! %s#%s", s.State.User.Username, s.State.User.Discriminator)
 }
 
-// chatSvc と cfg を引数に追加
-func messageCreateHandler(s *discordgo.Session, m *discordgo.MessageCreate, chatSvc chat.Service, cfg *config.Config) {
+// MessageType defines the type of a received message.
+type MessageType int
+
+const (
+	// MessageTypeNormal is a standard message in a channel.
+	MessageTypeNormal MessageType = iota
+	// MessageTypeDM is a direct message to the bot.
+	MessageTypeDM
+	// MessageTypeReply is a reply to the bot.
+	MessageTypeReply
+	// MessageTypeSelf is a message from the bot itself.
+	MessageTypeSelf
+)
+
+// classifyMessageType determines the type of a message.
+func classifyMessageType(s *discordgo.Session, m *discordgo.MessageCreate) MessageType {
 	if m.Author.ID == s.State.User.ID {
-		return
+		return MessageTypeSelf
+	}
+	if m.GuildID == "" {
+		return MessageTypeDM
+	}
+	if m.ReferencedMessage != nil && m.ReferencedMessage.Author != nil && m.ReferencedMessage.Author.ID == s.State.User.ID {
+		return MessageTypeReply
+	}
+	return MessageTypeNormal
+}
+
+// extractAttachmentURLs extracts URLs from message attachments.
+func extractAttachmentURLs(attachments []*discordgo.MessageAttachment) []string {
+	urls := make([]string, 0, len(attachments))
+	for _, att := range attachments {
+		urls = append(urls, att.URL)
+	}
+	return urls
+}
+
+// messageCreateHandler is the raw handler for discordgo's MessageCreate event.
+// It classifies the message, resolves the thread ID, and delegates to the testable handleMessageEvent.
+func messageCreateHandler(s *discordgo.Session, m *discordgo.MessageCreate, chatSvc chat.Service, cfg *config.Config) {
+	messageType := classifyMessageType(s, m)
+
+	// Wrap the session for the interface
+	wrappedSession := &discordgoSession{s}
+
+	// Resolve thread ID only when necessary
+	var threadID string
+	if messageType == MessageTypeReply {
+		threadID = resolveThreadID(wrappedSession, m.ChannelID)
+	} else {
+		threadID = m.ChannelID // For DMs or other cases
 	}
 
-	// DMの場合の処理
-	if m.GuildID == "" {
+	// Botかどうかの判定を追加
+	isBot := m.Author.Bot
+	handleMessageEvent(wrappedSession, m, chatSvc, cfg, messageType, threadID, isBot)
+}
+
+// handleMessageEvent is the testable core logic for handling message events.
+func handleMessageEvent(s DiscordSession, m *discordgo.MessageCreate, chatSvc chat.Service, cfg *config.Config, messageType MessageType, threadID string, isBot bool) {
+	switch messageType {
+	case MessageTypeSelf:
+		return // Do nothing
+	case MessageTypeDM:
 		log.Printf("DM受信: UserID=%s, Username=%s, Content=%s", m.Author.ID, m.Author.Username, m.Content)
-
-		// DMへの返信処理
-		if chatSvc == nil {
-			log.Println("DM処理エラー: chatSvcがnilです")
-			s.ChannelMessageSend(m.ChannelID, "内部エラーにより応答できませんでした。")
-			return
-		}
-		if cfg == nil {
-			log.Println("DM処理エラー: cfgがnilです")
-			s.ChannelMessageSend(m.ChannelID, "内部エラーにより応答できませんでした。")
-			return
-		}
-
-		// DMの場合、スレッドIDの代わりにチャンネルIDを使用し、プロンプトは空にする
-		// timestamp を string に変換し、戻り値を正しく受け取る
-		// GetResponse の最後の引数に cfg.Model.Prompts["default"] を渡す
-		responseText, _, _, err := chatSvc.GetResponse(m.Author.ID, m.ChannelID, m.Author.Username, m.Content, m.Timestamp.Format(time.RFC3339), cfg.Model.Prompts["default"])
-		if err != nil {
-			log.Printf("DM応答生成エラー: %v", err)
-			s.ChannelMessageSend(m.ChannelID, "応答の生成中にエラーが発生しました。")
-			return
-		}
-		if responseText == "" {
-			log.Printf("DM応答が空です。")
-			s.ChannelMessageSend(m.ChannelID, "応答がありませんでした。")
-			return
-		}
-
-		_, err = s.ChannelMessageSend(m.ChannelID, responseText)
-		if err != nil {
-			log.Printf("DM返信エラー: %v", err)
-		}
-
+		handleDirectMessage(s, m, chatSvc, cfg, isBot)
+	case MessageTypeReply:
+		log.Printf("Botへの返信を受信: UserID=%s, Username=%s, Content=%s, ReferencedMessageID=%s", m.Author.ID, m.Author.Username, m.Content, m.ReferencedMessage.ID)
+		handleReplyToBot(s, m, chatSvc, cfg, threadID, isBot)
+	case MessageTypeNormal:
 		jst := m.Timestamp
-		err = history.LogMessageCreate(
+		attachments := extractAttachmentURLs(m.Attachments)
+		err := history.LogMessageCreate(
 			m.ID,
 			m.ChannelID,
-			m.GuildID, // DMの場合は空文字列
+			m.GuildID,
 			m.Author.ID,
 			m.Author.Username,
 			m.Content,
+			attachments,
 			jst,
 		)
 		if err != nil {
-			log.Printf("Failed to log DM create event: %v", err)
+			log.Printf("Failed to log message create event: %v", err)
 		}
-		return // DM処理後は通常のメッセージ処理をスキップ
-	}
-
-	jst := m.Timestamp
-
-	err := history.LogMessageCreate(
-		m.ID,
-		m.ChannelID,
-		m.GuildID,
-		m.Author.ID,
-		m.Author.Username,
-		m.Content,
-		jst,
-	)
-	if err != nil {
-		log.Printf("Failed to log message create event: %v", err)
 	}
 }
 
@@ -233,4 +247,116 @@ func messageDeleteHandler(s *discordgo.Session, m *discordgo.MessageDelete) {
 
 func japanStandardTime() time.Time {
 	return time.Now().In(time.FixedZone("JST", 9*60*60))
+}
+
+// handleDirectMessage はDMに対する応答を処理します
+func handleDirectMessage(s DiscordSession, m *discordgo.MessageCreate, chatSvc chat.Service, cfg *config.Config, isBot bool) {
+	if chatSvc == nil {
+		log.Println("DM処理エラー: chatSvcがnilです")
+		s.ChannelMessageSend(m.ChannelID, "内部エラーにより応答できませんでした。")
+		return
+	}
+	if cfg == nil {
+		log.Println("DM処理エラー: cfgがnilです")
+		s.ChannelMessageSend(m.ChannelID, "内部エラーにより応答できませんでした。")
+		return
+	}
+
+	responseText, _, _, err := chatSvc.GetResponse(m.Author.ID, m.ChannelID, m.Author.Username, m.Content, m.Timestamp.Format(time.RFC3339), cfg.Model.Prompts["default"], isBot)
+	if err != nil {
+		log.Printf("DM応答生成エラー: %v", err)
+		s.ChannelMessageSend(m.ChannelID, "応答の生成中にエラーが発生しました。")
+		return
+	}
+	if responseText == "" {
+		log.Printf("DM応答が空です。")
+		s.ChannelMessageSend(m.ChannelID, "応答がありませんでした。")
+		return
+	}
+
+	_, err = s.ChannelMessageSend(m.ChannelID, responseText)
+	if err != nil {
+		log.Printf("DM返信エラー: %v", err)
+	}
+
+	jst := m.Timestamp
+	err = history.LogMessageCreate(
+		m.ID,
+		m.ChannelID,
+		m.GuildID, // DMの場合は空文字列
+		m.Author.ID,
+		m.Author.Username,
+		m.Content,
+		extractAttachmentURLs(m.Attachments),
+		jst,
+	)
+	if err != nil {
+		log.Printf("Failed to log DM create event: %v", err)
+	}
+}
+
+// resolveThreadID attempts to find the thread ID for a given channel ID using the session interface.
+func resolveThreadID(s DiscordSession, channelID string) string {
+	ch, err := s.StateChannel(channelID)
+	if err != nil {
+		// Fallback to fetching from API if not in state
+		ch, err = s.Channel(channelID)
+		if err != nil {
+			log.Printf("Could not resolve channel %s: %v", channelID, err)
+			return channelID // return original channelID as a fallback
+		}
+	}
+	if ch.IsThread() {
+		return ch.ID
+	}
+	return channelID
+}
+
+// handleReplyToBot はBotへの返信に対する応答を処理します
+func handleReplyToBot(s DiscordSession, m *discordgo.MessageCreate, chatSvc chat.Service, cfg *config.Config, threadID string, isBot bool) {
+	if chatSvc == nil {
+		log.Println("Botへの返信処理エラー: chatSvcがnilです")
+		s.ChannelMessageSend(m.ChannelID, "内部エラーにより応答できませんでした。")
+		return
+	}
+	if cfg == nil {
+		log.Println("Botへの返信処理エラー: cfgがnilです")
+		s.ChannelMessageSend(m.ChannelID, "内部エラーにより応答できませんでした。")
+		return
+	}
+
+	// 応答を生成
+	responseText, _, _, err := chatSvc.GetResponse(m.Author.ID, threadID, m.Author.Username, m.Content, m.Timestamp.Format(time.RFC3339), cfg.Model.Prompts["default"], isBot)
+	if err != nil {
+		log.Printf("Botへの返信応答生成エラー: %v", err)
+		s.ChannelMessageSend(m.ChannelID, "応答の生成中にエラーが発生しました。")
+		return
+	}
+	if responseText == "" {
+		log.Printf("Botへの返信応答が空です。")
+		s.ChannelMessageSend(m.ChannelID, "応答がありませんでした。")
+		return
+	}
+
+	// 返信としてメッセージを送信
+	_, err = s.ChannelMessageSendReply(m.ChannelID, responseText, m.Reference())
+	if err != nil {
+		log.Printf("Botへの返信送信エラー: %v", err)
+	}
+
+	// 履歴に記録
+	jst := m.Timestamp
+	err = history.LogMessageCreate(
+		m.ID,
+		m.ChannelID,
+		m.GuildID,
+		m.Author.ID,
+		m.Author.Username,
+		m.Content,
+		extractAttachmentURLs(m.Attachments),
+		jst,
+	)
+	if err != nil {
+		log.Printf("Failed to log reply message create event: %v", err)
+	}
 }

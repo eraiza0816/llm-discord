@@ -15,6 +15,7 @@ type HistoryManager interface {
 	Get(userID string, threadID string) ([]HistoryMessage, error)             // 戻り値を []HistoryMessage, error に変更
 	Clear(userID string, threadID string) error                               // errorを返すように変更
 	ClearAllByThreadID(threadID string) error                                 // errorを返すように変更
+	GetBotConversationCount(threadID, userID string) (int, error)
 	Close() error
 }
 
@@ -72,6 +73,11 @@ func (m *InMemoryHistoryManager) ClearAllByThreadID(threadID string) error {
 	// もしくは全ユーザーの履歴をクリアするなどの振る舞いになる。
 	// ここでは何もしない。
 	return nil
+}
+
+func (m *InMemoryHistoryManager) GetBotConversationCount(threadID, userID string) (int, error) {
+	// InMemoryHistoryManagerではこの機能は未実装とする
+	return 0, nil
 }
 
 func (m *InMemoryHistoryManager) Close() error {

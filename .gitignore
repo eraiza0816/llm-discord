@@ -5,3 +5,4 @@ json/custom_model.json
 llm-discord
 data/*
 docs/audit.md
+temp_scripts/
