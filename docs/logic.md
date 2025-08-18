@@ -14,7 +14,7 @@ graph TD
 
     subgraph Core Logic in chat.Service
         E --> F{1. Bot Message?};
-        F -- Yes --> G[Check Bot conversation limit (max 3) & Force Ollama];
+        F -- Yes --> G[Check Bot conversation limit (max 3) and Force Ollama];
         F -- No --> H[2. Build Prompt with History];
         G --> H;
 
@@ -44,3 +44,4 @@ graph TD
     style Core Logic in chat.Service fill:#f9f,stroke:#333,stroke-width:2px
     style Discord Interaction fill:#ccf,stroke:#333,stroke-width:2px
     style Data Persistence & Response fill:#cfc,stroke:#333,stroke-width:2px
+
