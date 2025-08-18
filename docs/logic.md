@@ -36,11 +36,11 @@ graph TD
         J --> R;
     end
 
-    subgraph Data Persistence & Response
+    subgraph Data Persistence and Response
         R --> S[Add conversation to History DuckDB];
         S --> T[Send Response to Discord];
     end
 
     style Core Logic in chat.Service fill:#f9f,stroke:#333,stroke-width:2px
     style Discord Interaction fill:#ccf,stroke:#333,stroke-width:2px
-    style Data Persistence & Response fill:#cfc,stroke:#333,stroke-width:2px
+    style Data Persistence and Response fill:#cfc,stroke:#333,stroke-width:2px
