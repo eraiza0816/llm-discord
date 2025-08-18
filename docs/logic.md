@@ -29,7 +29,7 @@ graph TD
         M -- No --> N[Return Error];
 
         L -- No --> O{4b. Function Call?};
-        O -- Yes --> P[Execute Function (Weather/URL)];
+        O -- Yes --> P[Execute Function Weather and URL];
         P --> Q[Call Gemini API again with tool result];
         Q --> R[Final Response];
         O -- No --> R;
@@ -37,7 +37,7 @@ graph TD
     end
 
     subgraph Data Persistence & Response
-        R --> S[Add conversation to History (DuckDB)];
+        R --> S[Add conversation to History DuckDB];
         S --> T[Send Response to Discord];
     end
 
