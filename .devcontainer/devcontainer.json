@@ -1,0 +1,19 @@
+{
+  "name": "Go Development",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "golang.go",
+        "ms-azuretools.vscode-docker",
+        "EditorConfig.EditorConfig"
+      ]
+    }
+  },
+  "forwardPorts": [],
+  "postCreateCommand": "go mod download",
+  "remoteUser": "vscode"
+}
