@@ -27,7 +27,6 @@ type Service interface {
 type Chat struct {
 	genaiClient      *genai.Client
 	genaiModel       *genai.GenerativeModel
-	weatherService   WeatherService
 	urlReaderService URLReaderService
 	defaultPrompt    string
 	historyMgr       history.HistoryManager
@@ -54,17 +53,11 @@ func NewChat(cfg *config.Config, historyMgr history.HistoryManager) (Service, er
 	}
 	genaiModel := genaiClient.GenerativeModel(initialGeminiModelName)
 
-	weatherService := NewWeatherService()
 	urlReaderService := NewURLReaderService()
 
-	weatherFuncDeclarations := weatherService.GetFunctionDeclarations()
 	urlReaderFuncDeclaration := urlReaderService.GetURLReaderFunctionDeclaration()
 
 	var allDeclarations []*genai.FunctionDeclaration
-	// weatherFuncDeclarations が nil でなく、要素を持つ場合のみ追加
-	if len(weatherFuncDeclarations) > 0 {
-		allDeclarations = append(allDeclarations, weatherFuncDeclarations...)
-	}
 	if urlReaderFuncDeclaration != nil {
 		allDeclarations = append(allDeclarations, urlReaderFuncDeclaration)
 	}
@@ -83,7 +76,6 @@ func NewChat(cfg *config.Config, historyMgr history.HistoryManager) (Service, er
 	return &Chat{
 		genaiClient:      genaiClient,
 		genaiModel:       genaiModel,
-		weatherService:   weatherService,
 		urlReaderService: urlReaderService,
 		historyMgr:       historyMgr,
 		tools:            tools,
@@ -217,9 +209,6 @@ HandleResponse:
 						} else {
 							toolResult, toolErr = c.urlReaderService.GetURLContentAsText(url)
 						}
-					} else {
-						// 既存の天候情報関数の処理
-						toolResult, toolErr = c.weatherService.HandleFunctionCall(fn)
 					}
 
 					if toolErr != nil {

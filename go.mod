@@ -5,7 +5,6 @@ go 1.24.3
 require (
 	github.com/PuerkitoBio/goquery v1.10.3
 	github.com/bwmarrin/discordgo v0.28.1
-	github.com/eraiza0816/zu2l v0.0.0-20250515084028-f376bdd068d4
 	github.com/google/generative-ai-go v0.20.1
 	github.com/joho/godotenv v1.5.1
 	github.com/marcboeker/go-duckdb v1.8.5

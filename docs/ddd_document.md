@@ -13,10 +13,6 @@
 - プロンプト編集機能: ユーザーは`/edit`コマンドを使用してプロンプトを編集できます。
   - `/edit`コマンドで"delete"と送信された場合、`json/custom_model.json` から該当ユーザーの行を削除します。
 - DM応答機能: BotへのDM送信に対しても応答します。
-- 天気情報提供機能: LLMがFunction Calling (`getWeather`) を利用して、ユーザーがメッセージに「天気」と地名を含む場合に `zu2l` API (`GetWeatherPoint`, `GetWeatherStatus`) を呼び出して天気情報を返します。
-- 頭痛情報提供機能: LLMがFunction Calling (`getPainStatus`) を利用して、ユーザーがメッセージに「頭痛」または「ずつう」と地名を含む場合に `zu2l` API (`GetWeatherPoint`, `GetPainStatus`) を呼び出して頭痛情報を返します。
-- Otenki ASP情報提供機能: LLMがFunction Calling (`getOtenkiAspInfo`) を利用して、ユーザーがメッセージに「asp情報」と地点コードを含む場合に `zu2l` API (`GetOtenkiASP`) を呼び出してOtenki ASP情報を返します。
-- 地点検索機能: LLMがFunction Calling (`searchWeatherPoint`) を利用して、ユーザーがメッセージに「地点検索」とキーワードを含む場合に `zu2l` API (`GetWeatherPoint`) を呼び出して地点情報を返します。
 - URL内容理解機能: ユーザーが会話中にURLを提示すると、LLMがFunction Calling (`get_url_content`) を利用して `URLReaderService` を呼び出し、URLの主要なテキストコンテンツを取得し、内容を理解した上で応答します。
 
 ## ドメインに関する用語（ユビキタス言語）
@@ -91,10 +87,10 @@
 
 ### ドメインサービス / アプリケーションサービス / インフラストラクチャサービス
 
-- ChatService (`chat/chat.go`, `chat/prompt.go`, `chat/utils.go`, `chat/ollama.go`, `chat/weather.go`)
-  - 役割: LLM (Gemini, Ollama) とのやり取り、および Gemini の Function Calling 機能のディスパッチを担当する。天気関連の Function Calling 処理は `WeatherService` に、URL内容取得関連の Function Calling 処理は `URLReaderService` に委譲する。
+- ChatService (`chat/chat.go`, `chat/prompt.go`, `chat/utils.go`, `chat/ollama.go`)
+  - 役割: LLM (Gemini, Ollama) とのやり取り、および Gemini の Function Calling 機能のディスパッチを担当する。URL内容取得関連の Function Calling 処理は `URLReaderService` に委譲する。
   - 処理:
-    - `NewChat(cfg *config.Config, historyMgr history.HistoryManager)` (`chat/chat.go`): Geminiクライアント、`HistoryManager`、`WeatherService`、`URLReaderService` を初期化する。`cfg.Model` から `ModelConfig` を取得し保持する。`WeatherService` および `URLReaderService` から取得した Function Declaration を含む `Tool` を定義し、初期 Gemini モデルに設定する。
+    - `NewChat(cfg *config.Config, historyMgr history.HistoryManager)` (`chat/chat.go`): Geminiクライアント、`HistoryManager`、および `URLReaderService` を初期化する。`cfg.Model` から `ModelConfig` を取得し保持する。`URLReaderService` から取得した Function Declaration を含む `Tool` を定義し、初期 Gemini モデルに設定する。
     - `GetResponse(userID, threadID, username, message, timestamp, prompt, isBot)` (`chat/chat.go`):
       1. `isBot` が `true` の場合、Bot同士の会話とみなし、会話回数が3回以上なら応答を中断する。また、強制的にOllamaモデルを使用する。
       2. `buildFullInput` (`chat/prompt.go`) を呼び出して、プロンプト、履歴、ユーザーメッセージ等を結合した入力文字列を生成する。
@@ -102,7 +98,7 @@
       4. `ModelConfig.Ollama.Enabled` が `false` の場合、Gemini APIに応答を要求する (`genaiModel.GenerateContent`)。
       5. Gemini APIから429 (Quota Exceeded) エラーが返された場合、`SecondaryModelName` での再試行、それでも失敗すればOllamaへのフォールバックを試みる。
       6. Geminiからの応答に `FunctionCall` が含まれる場合:
-         - `fn.Name` に応じて `urlReaderService` または `weatherService` に処理を委譲し、ツールの実行結果を取得する。
+         - `fn.Name` に応じて `urlReaderService` に処理を委譲し、ツールの実行結果を取得する。
          - ツールの実行結果を含めて再度Gemini APIを呼び出し、最終的な自然言語の応答を生成させる。
          - 生成された応答を履歴に追加し、返す。
       7. `FunctionCall` がない場合（通常のテキスト応答）:
@@ -112,17 +108,6 @@
     - `getResponseText` (`chat/utils.go`): 応答テキスト抽出ヘルパー。
     - `getOllamaResponse` (`chat/ollama.go`): Ollama API との通信処理。
     - `parseOllamaStreamResponse` (`chat/ollama.go`): Ollama のストリーミング応答の解析。
-
-- WeatherService (`chat/weather.go`)
-  - 役割: 天気関連の Function Calling 処理と `zu2l` API との連携を担当する。
-  - 処理:
-    - `NewWeatherService`: `zutoolapi.Client` を初期化する。
-    - `GetFunctionDeclarations`: 天気関連の Function Declaration (`getWeather`, `getPainStatus`, `searchWeatherPoint`, `getOtenkiAspInfo`) のリストを返す。
-    - `HandleFunctionCall`: 受け取った `genai.FunctionCall` の名前 (`fn.Name`) に基づいて、対応する内部ハンドラ (`handleGetWeather` など) を呼び出す。
-    - `handleGetWeather`, `handleGetPainStatus`, `handleSearchWeatherPoint`, `handleGetOtenkiAspInfo`: 各 Function Call の具体的な処理。`zutoolapi.Client` を使用して `zu2l` API を呼び出し、結果を整形して文字列として返す。地点情報の取得や天気コードの絵文字変換はヘルパー関数を利用する。
-    - `getLocationInfo` (ヘルパー関数): `GetWeatherPoint` API を呼び出し、地点コードと地点名を取得する共通処理。
-    - `getWeatherEmoji` (ヘルパー関数): 天気コード（数値または文字列）を受け取り、100の位で丸めて `weatherEmojiMap` を参照して対応する絵文字を返す共通処理。
-    - `weatherEmojiMap`: 天気コードに対応する絵文字を定義する。
 
 - URLReaderService (`chat/url_reader_service.go`)
   - 役割: URLの内容取得とテキスト抽出、および `get_url_content` Function Declaration の提供を担当する。
@@ -176,17 +161,7 @@
 - chat/prompt.go:
   - 役割: LLM に送信するプロンプト（入力文字列）の構築ロジックを担当。
   - 処理:
-    - `buildFullInput(systemPrompt, userMessage, historyMgr, userID, threadID, timestamp)`: システムプロンプト、現在日時情報、ツール指示（`get_url_content`、天気関連を含む）、会話履歴（スレッドIDとユーザーIDで取得、ロール名 "model" を "assistant" に変換）、ユーザーメッセージを結合する。
-
-- chat/weather.go:
-  - 役割: `WeatherService` の実装。天気関連の Function Calling 処理と `zu2l` API との連携を担当。
-  - 処理:
-    - `WeatherService` インターフェースと `weatherServiceImpl` 構造体を定義。
-    - `NewWeatherService`: サービスの初期化。
-    - `GetFunctionDeclarations`: 天気関連ツールの定義を返す。
-    - `HandleFunctionCall` および `handle*` メソッド群: 各 Function Call の具体的な処理と `zu2l` API 呼び出し。地点情報取得や絵文字変換はヘルパー関数を利用。
-    - `getLocationInfo`, `getWeatherEmoji` (ヘルパー関数): コードの共通化と可読性向上のための内部ヘルパー。`getWeatherEmoji` は天気コードを100の位で丸めて絵文字を検索する。
-    - `weatherEmojiMap`: 天気コードと絵文字のマッピング。
+    - `buildFullInput(systemPrompt, userMessage, historyMgr, userID, threadID, timestamp)`: システムプロンプト、現在日時情報、ツール指示（`get_url_content` を含む）、会話履歴（スレッドIDとユーザーIDで取得、ロール名 "model" を "assistant" に変換）、ユーザーメッセージを結合する。
 
 - chat/utils.go:
   - 役割: `chat` パッケージ内で共通して使用されるヘルパー関数を提供する。

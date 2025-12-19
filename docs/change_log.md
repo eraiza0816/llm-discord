@@ -1,4 +1,9 @@
 ## 変更履歴
+- 2025/12/19: 天気予報機能およびzutool連携機能を削除。
+    - `chat/weather.go` を削除し、天気予報、頭痛予報、地点検索、Otenki ASP情報の取得機能を廃止。
+    - `chat/chat.go`: `WeatherService` への依存を削除し、Function Calling の振り分けロジックを修正。
+    - `chat/prompt.go`: LLM向けのプロンプトから天気関連のツール説明を削除。
+    - `docs/ddd_document.md`: 天気予報機能に関する設計記述を削除。
 - 2025/06/27: Botとの会話に関する挙動を修正。
     - Botからのメッセージに対して、3回までは応答し、4回目以降は応答しないように変更。
     - Botとの会話では、使用するLLMをOllamaに強制的に切り替えるように変更。
