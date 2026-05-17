@@ -1,168 +1,206 @@
-# リファクタリング計画
+# リファクタリング計画書
 
-## 現状分析
+作成日: 2026-05-18
+対象: llm-discord-go
 
-### アーキテクチャ概要
+## 1. 概要
 
-```
-main.go
- ├─ config.LoadConfig() → config.Config
- ├─ discord.StartBot(cfg)
- │    ├─ discord/session.go    : DiscordSession インターフェース
- │    ├─ discord/handler.go    : メッセージハンドリング（主要ロジック）
- │    ├─ discord/chat_command.go  : /chat スラッシュコマンド
- │    ├─ discord/about_command.go : /about スラッシュコマンド
- │    ├─ discord/edit_command.go  : /edit スラッシュコマンド
- │    ├─ discord/reset_command.go : /reset スラッシュコマンド
- │    ├─ discord/custom_prompt.go : カスタムプロンプト管理
- │    ├─ discord/embeds.go     : Embed 分割ユーティリティ
- │    └─ discord/utils.go      : 便利関数
- ├─ chat.NewChat(cfg, historyMgr) → chat.Service
- │    ├─ chat/chat.go          : Gemini API 呼び出し（約345行）
- │    ├─ chat/ollama.go        : Ollama 呼び出し
- │    ├─ chat/prompt.go        : プロンプト構築
- │    ├─ chat/url_reader_service.go : URL 取得サービス
- │    └─ chat/utils.go         : 便利関数
- ├─ history.NewDuckDBHistoryManager() → history.HistoryManager
- │    ├─ history/duckdb_manager.go  : DuckDB 履歴管理
- │    ├─ history/history.go         : インターフェース定義
- │    ├─ history/audit_log.go       : 監査ログ
- │    ├─ history/audit_log_monitor.go : 監査ログモニター
- │    └─ history/url_downloader.go   : URL ダウンローダー
- └─ loader.LoadModelConfig() → loader.ModelConfig
-      └─ loader/model.go      : model.json 読み込み
-```
+本ドキュメントは llm-discord-go のコードベースを分析し、アーキテクチャ改善、保守性向上、テスト容易性向上を目的としたリファクタリング計画をまとめる。
 
-### 依存関係の流れ
+## 2. 現状分析
+
+### 2.1 全体アーキテクチャ
 
 ```
 main.go
-  → config (起動時1回)
-  → discord.StartBot(cfg) → discord (ハンドラ)
-  → chat.NewChat(cfg, historyMgr) → chat (LLM)
-     → history → DuckDB
-     → loader (model.json)
+├── config/config.go
+├── discord/ (Discord Bot ハンドリング)
+│   ├── discord.go (エントリポイント、session管理)
+│   ├── handler.go (全interactionの受付)
+│   ├── about_command.go
+│   ├── chat_command.go
+│   ├── edit_command.go
+│   ├── reset_command.go
+│   ├── custom_prompt.go
+│   ├── session.go
+│   ├── embeds.go
+│   ├── utils.go
+│   └── _test.go
+├── chat/ (LLMとの通信)
+│   ├── chat.go (Invoke: プロバイダディスパッチ)
+│   ├── ollama.go (Ollama実装)
+│   ├── openai.go (OpenAI実装)
+│   ├── service.go (Service層)
+│   ├── url_reader_service.go
+│   ├── prompt.go (プロンプト管理)
+│   └── utils.go
+├── history/ (会話履歴管理)
+│   ├── history.go
+│   ├── audit_log.go
+│   ├── audit_log_monitor.go
+│   ├── duckdb_manager.go
+│   └── url_downloader.go
+├── loader/ (モデル定義)
+│   ├── model.go
+│   └── model_test.go
+└── docs/
 ```
 
----
+### 2.2 発見された問題点
 
-## 問題点と改善提案
+#### [P0 - クリティカル] バグ
 
-### 重大度: HIGH
+1. **chat/chat.go `Invoke` - context 未使用**
+   - `ctx context.Context` を受け取っているが、内部で `context.Background()` を生成して使用している
+   - キャンセレーションやタイムアウトが効かない
 
-#### 1. `chat/chat.go` の `GetResponse` が巨大（約200行）
+2. **chat/ollama.go `Invoke` - context 未使用・引数順序不整合**
+   - `ctx context.Context` が引数にあるが使われていない
+   - `Invoke(ctx, url, image)` のインタフェースに対して、内部実装は引数順序や解釈が統一されていない
 
-- **問題**: 1つのメソッドに Ollama/Gemini の処理分岐、Function Calling、エラーハンドリング、リトライロジック、モデル切り替えが詰め込まれている。
-- **改善**: 下記の単位に分割する。
-  - `generateResponse` (共通のレスポンス生成フロー)
-  - `callGemini` (Gemini API 呼び出し)
-  - `callOllama` (Ollama API 呼び出し)
-  - `handleFunctionCall` (Function Calling 処理)
-  - `retryWithSecondaryModel` (429エラー時のセカンダリモデルへのフォールバック)
+#### [P1 - 重要] 設計の問題
 
-#### 2. ロガーが散在・重複
+3. **discord/handler.go - 単一関数に全コマンド処理が集約**
+   - `HandleInteraction` が 200 行を超え、すべての slash command を switch で処理
+   - 新規コマンド追加のたびに関数が肥大化
+   - テストが困難
 
-- **問題**:
-  - `chat/chat.go` のパッケージレベル変数 `errorLogger` (`log/error.log` 出力) 
-  - `log/app.log` への標準ログ出力
-  - `history/audit_log.go` の監査ログ
-  - ログの出力先・フォーマットが統一されていない
-- **改善**: パッケージレベル変数のロガーを廃止し、標準 `log` パッケージに統一。どうしても必要な場合は `config.Config` 経由でロガーを注入する。
+4. **プロバイダ選択が文字列ベース**
+   - `provider` フィールドが単なる string
+   - chat.go 内部で `switch provider { case "openai": ... case "ollama": ... }`
+   - 新しいプロバイダ追加時に chat.go の修正が必要
 
-### 重大度: MEDIUM
+5. **discord パッケージと chat パッケージの結合**
+   - discord が chat の具体実装に依存している
+   - discord/discord.go が `chat.Invoke(provider, ...)` を直接呼ぶ
+   - インタフェースを介した依存関係になっておらず、テスト差し替えが困難
 
-#### 3. `config/config.go` の設定管理
+#### [P2 - 改善推奨] コード品質
 
-- **問題**:
-  - `.env`, `json/model.json`, `json/custom_model.json` の3ファイルを `LoadConfig` 1関数で読み込んでいる
-  - 設定のバリデーションが不足（空値チェック程度）
-- **改善**: ファイルごとに読み込み関数を分離し、明示的なバリデーションを追加する。
+6. **loader/model.go - 2つのLoad関数で重複**
+   - `LoadModel()` と `LoadCustomModel()` が類似処理
+   - モデル選択ロジックが分岐で複雑化
 
-#### 4. HTTP クライアントの共通化
+7. **chat/url_reader_service.go - 責務の混在**
+   - URL読み取りとプロンプト生成が同一ファイルに混在
+   - URL解決がチャットフローと密結合
 
-- **問題**: Ollama 呼び出し (`chat/ollama.go`) で `http.Client` を生成している。
-- **改善**: `config.Config` に共通の `HTTPClient` を持たせるか、`chat` パッケージに HTTP クライアント管理を集約する。
+8. **discord/custom_prompt.go - 管理方法**
+   - カスタムプロンプトがコード上のファイルシステムパスに依存
 
-#### 5. `config.Config` のミューテーション
+9. **history/ パッケージ - 1ファイルに複数責務**
+   - duckdb_manager.go に DB 管理と履歴追加ロジックが混在
+   - audit_log.go に監査ログと履歴管理の共通コード
 
-- **問題**: `chat/chat.go` の `GetResponse` 内で `cfg.Model = secondaryModelCfg` のように `config.Config` のフィールドを書き換えている。Goのベストプラクティスに反する（共有状態のミューテーション）。
-- **改善**: `Config` はイミュータブルに扱う。モデル切り替えが必要な場合は関数内のローカル変数で管理する。
+10. **エラーハンドリングの不整合**
+    - 一部は `return err`、一部は `log.Fatal`、一部はログ出力のみ
+    - エラーのラップが不十分で原因追跡が困難
 
-### 重大度: LOW
+11. **テスト不足**
+    - loader/model_test.go のみテストあり
+    - discord/handler_test.go はテストファイルがあるが空の可能性
+    - モックを使ったユニットテストが存在しない
 
-#### 6. エラーハンドリングの一貫性
+## 3. リファクタリング計画
 
-- **問題**: 一部のエラーは `log.Printf`、一部は `errorLogger.Printf`、一部は `return err` と混在。
-- **改善**: 呼び出し元でハンドリングすべきエラーは返す。ログ出力のみで良いものは標準の `log` に統一。
+### Phase 1: バグ修正（優先度: P0）
 
-#### 7. `chat/prompt.go` の分割
+| # | タスク | ファイル | 内容 |
+|---|--------|----------|------|
+| 1 | context伝播の修正 | chat/chat.go, chat/ollama.go, chat/openai.go | `context.Background()` を引数の `ctx` に置き換え |
+| 2 | 引数順序の統一 | chat/ollama.go, chat/openai.go | インタフェース呼び出しと実装の引数順序を統一 |
 
-- **問題**: プロンプト構築、システムプロンプト固定文字列、Function Calling のツール定義が1ファイルに混在。
-- **改善**: `chat/prompt_builder.go`（構築ロジック）、`chat/system_prompt.go`（固定プロンプト）、`chat/tools.go`（ツール定義）に分割。
+### Phase 2: アーキテクチャ改善（優先度: P1）
 
-#### 8. テスト不足
+#### 2-1: ChatProvider インタフェースの導入
 
-- **問題**: `chat` パッケージと `history` パッケージにテストファイルが存在しない。
-- **改善**: ユニットテストを追加する。
-
----
-
-## フェーズ分け
-
-### フェーズ1（即効性・安全性の高い改善）
-
-| # | タスク | 成果物 | 影響範囲 |
-|---|--------|--------|----------|
-| 1 | `chat/chat.go` の `GetResponse` を分割 | 可読性・保守性向上 | chat/chat.go |
-| 2 | ロガーの統一（`errorLogger` の廃止） | ログ出力の一貫性 | chat/chat.go, chat/ollama.go |
-| 3 | `config.LoadConfig` の責務分割 | 設定管理の明確化 | config/config.go |
-
-### フェーズ2（中期的な改善）
-
-| # | タスク | 成果物 | 影響範囲 |
-|---|--------|--------|----------|
-| 4 | HTTP クライアントの共通化 | 重複削除 | chat/ollama.go, chat/url_reader_service.go |
-| 5 | `Config` ミューテーションの修正 | 安全性向上 | chat/chat.go, config/config.go |
-
-### フェーズ3（長期的な改善）
-
-| # | タスク | 成果物 | 影響範囲 |
-|---|--------|--------|----------|
-| 6 | `chat/prompt.go` の分割 | 明確な責務分離 | chat/prompt.go |
-| 7 | テスト追加 | 品質保証 | chat/, history/ |
-| 8 | エラーハンドリング統一 | 一貫性向上 | 全パッケージ |
-
----
-
-## リファクタリング後のアーキテクチャイメージ
-
-```
-main.go
- ├─ config.LoadConfig()
- │    ├─ loadEnvConfig()        ← 新
- │    ├─ loadModelConfig()      ← 新
- │    └─ loadCustomPromptConfig() ← 新
- ├─ discord.StartBot(cfg)
- │    └─ (変更なし)
- ├─ chat.NewChat(cfg, historyMgr)
- │    ├─ chat/chat.go            ← 分割後のエントリポイント
- │    ├─ chat/gemini.go          ← 新 (GeminiAPI呼び出し)
- │    ├─ chat/ollama.go          ← 変更なし
- │    ├─ chat/prompt_builder.go  ← 新
- │    ├─ chat/system_prompt.go   ← 新
- │    ├─ chat/tools.go           ← 新
- │    ├─ chat/url_reader_service.go ← 変更なし
- │    └─ chat/utils.go           ← 変更なし
- └─ (以下同じ)
+```go
+// chat/provider.go (新規)
+type ChatProvider interface {
+    Invoke(ctx context.Context, prompt string, imageURL string) (string, error)
+    Name() string
+}
 ```
 
+- OllamaProvider, OpenAIProvider がこのインタフェースを実装
+- chat/chat.go の switch 文を削除し、マップベースのプロバイダ管理に変更
+- 新しいプロバイダ追加時に chat.go の修正不要に
+
+#### 2-2: Command パターン/ルーターの導入 (discord/)
+
+```go
+// discord/command.go (新規)
+type CommandHandler interface {
+    Handle(session *discordgo.Session, interaction *discordgo.InteractionCreate, cfg *Config) error
+}
+```
+
+- 各コマンド（about, chat, edit, reset, custom_prompt）がインタフェースを実装
+- `HandleInteraction` の switch 文を削除し、登録されたハンドラに委譲
+- テストは各ハンドラ単位で独立して記述可能に
+
+#### 2-3: discord と chat の依存関係をインタフェース化
+
+- discord パッケージは chat.ChatProvider インタフェースにのみ依存
+- 実際のプロバイダは main.go で注入
+
+### Phase 3: コード品質改善（優先度: P2）
+
+#### 3-1: loader/model.go リファクタリング
+
+- `LoadModel()` と `LoadCustomModel()` を統合
+- 設定情報を構造体で受け取る形式に変更
+
+#### 3-2: エラーハンドリング統一
+
+- すべてのエラーに `fmt.Errorf("context: %w", err)` 形式でコンテキスト付与
+- `log.Fatal` を main.go 以外で使用禁止
+- パッケージレベルのエラー型の検討
+
+#### 3-3: URL読み取り機能の分離
+
+- `url_reader_service.go` の責務を分割
+  - URL読み取り（外部API呼び出し）とプロンプト加工を分離
+  - 必要に応じて独立したパッケージ化
+
+#### 3-4: history/ パッケージ整理
+
+- `HistoryManager` インタフェースの明示
+- データアクセス層とビジネスロジックの分離
+- DuckDB依存をインタフェースの背後に隠蔽
+
+### Phase 4: テスト基盤の整備（優先度: P1）
+
+1. インタフェース導入後、モックを使ったユニットテストを実装
+2. 各パッケージに `_test.go` ファイルを作成
+3. CIでのテスト実行設定
+
+## 4. 期待される効果
+
+| 項目 | 現状 | 改善後 |
+|------|------|--------|
+| 新規コマンド追加 | handler.go + discord.go の修正が必要 | 新しいハンドラファイル追加のみ |
+| 新規プロバイダ追加 | chat.go のswitch文修正 | provider.go に構造体追加のみ |
+| ユニットテスト | ほぼ不可能 | インタフェースモックで単独テスト可能 |
+| context伝搬 | 実質未使用 | 全チェーンで適切に伝搬 |
+| 循環依存 | 発生していないが監視が必要 | 明示的な依存方向で管理 |
+| コード理解容易性 | 中 | 高（責務分離完了） |
+
+## 5. 非機能要件・制約
+
+- 外部パッケージは新規導入しない（go mod に追加しない）
+- Go 標準ライブラリのみで実装
+- 既存の CLI からの動作（引数・環境変数）は維持
+- データベーススキーマ変更なし
+- 段階的にリファクタリングし、各Phase完了後に動作確認
+
+## 6. 優先順位提案
+
+1. Phase 1（バグ修正）を最優先
+2. Phase 2-1（ChatProviderインタフェース）+ Phase 2-3（依存性注入）を同時進行
+3. Phase 2-2（Commandパターン）を次に実施
+4. Phase 3（コード品質）、Phase 4（テスト）は並行して実施可能なものから着手
+
 ---
 
-## 期待される効果
-
-| 指標 | 現状 | 目標 |
-|------|------|------|
-| `chat/chat.go` の行数 | 345行 | 150行以下（エントリポイントのみ） |
-| `GetResponse` のネスト深さ | 5レベル以上 | 3レベル以下 |
-| ログ出力の手段 | 3種類（標準log, errorLogger, auditLog） | 2種類（標準log, auditLog） |
-| 設定読み込み関数の責務 | 1関数で3ファイル | 3関数で各1ファイル |
+以上がリファクタリング計画の全体像である。実際の実装着手時には各Phaseをさらにタスク分割し、変更単位を小さくして進めることを推奨する。

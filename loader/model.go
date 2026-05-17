@@ -15,12 +15,20 @@ type ModelConfig struct {
 	Prompts            map[string]string `json:"prompts"`
 	About         About             `json:"about"`
 	Ollama        OllamaConfig      `json:"ollama"`
+	OpenAI        OpenAIConfig      `json:"openai"`
 }
 
 type OllamaConfig struct {
 	Enabled     bool   `json:"enabled"`
 	APIEndpoint string `json:"api_endpoint"`
 	ModelName   string `json:"model_name"`
+}
+
+type OpenAIConfig struct {
+	Enabled     bool   `json:"enabled"`
+	APIEndpoint string `json:"api_endpoint"`
+	ModelName   string `json:"model_name"`
+	APIKey      string `json:"api_key,omitempty"`
 }
 
 type About struct {

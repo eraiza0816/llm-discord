@@ -1,4 +1,10 @@
 ## 変更履歴
+- 2026/05/18: OpenAI 互換 API 対応を追加。
+    - `chat/openai.go`: 新規作成。OpenAI 互換 API（v1/chat/completions）へのストリーミングリクエスト送信と SSE パースを実装。
+    - `loader/model.go`: `ModelConfig` に `OpenAI OpenAIConfig` フィールド、`OpenAIConfig` 構造体を追加。
+    - `chat/service.go`: `LLMProvider` に `ProviderOpenAI` を追加。`ModelSelection` / `OpenAIConfig` を追加。
+    - `chat/chat.go`: `GetResponse` に OpenAI 有効時の分岐を追加（Gemini → Ollama チェックの後、Gemini の前に）。
+    - `loader/model_test.go`: テスト用 JSON に `openai` セクションを追加。
 - 2026/05/18: URL読み取り機能 (`get_url_content` Function Calling / `chat/url_reader_service.go`) を削除。
     - `chat/url_reader_service.go` を削除。
     - `chat/chat.go`: `urlReaderService` フィールド、初期化コード、`get_url_content` ハンドリング処理を削除。

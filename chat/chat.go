@@ -76,10 +76,12 @@ func (c *Chat) GetResponse(userID, threadID, username, message, timestamp, defau
 	}
 
 	modelCfg := c.modelConfig
-	if isBot {
-		// Botの場合はOllamaを強制的に使用する
+	log.Printf("DEBUG modelCfg: Ollama.Enabled=%v, OpenAI.Enabled=%v, OpenAI.Endpoint=%q, OpenAI.Model=%q, Ollama.Enabled=%v",
+		modelCfg.Ollama.Enabled, modelCfg.OpenAI.Enabled, modelCfg.OpenAI.APIEndpoint, modelCfg.OpenAI.ModelName, modelCfg.Ollama.Enabled)
+	if isBot && modelCfg.Ollama.Enabled {
+		// Botの場合はOllamaを強制的に使用する（Ollamaが有効な場合のみ）
 		log.Printf("Botとの対話のため、Ollamaモデルを強制的に使用します。UserID: %s", userID)
-		modelCfg.Ollama.Enabled = true
+		// Ollama.Enabled は既に true なのでそのまま進む
 	}
 
 	currentSystemPrompt := modelCfg.GetPromptByUser(username)
@@ -91,13 +93,22 @@ func (c *Chat) GetResponse(userID, threadID, username, message, timestamp, defau
 
 	if modelCfg.Ollama.Enabled {
 		log.Printf("Using Ollama (%s) for user %s in thread %s", modelCfg.Ollama.ModelName, userID, threadID)
-		// ollama.go の getOllamaResponse を使用してOllamaからの応答を取得
 		responseText, elapsed, err := c.getOllamaResponse(userID, threadID, message, fullInput, modelCfg.Ollama)
 		if err != nil {
 			errorLogger.Printf("Ollama API call failed for user %s in thread %s: %v", userID, threadID, err)
 			return "", elapsed, modelCfg.Ollama.ModelName, fmt.Errorf("Ollama APIからのエラー: %w", err)
 		}
 		return responseText, elapsed, modelCfg.Ollama.ModelName, nil
+	}
+
+	if modelCfg.OpenAI.Enabled {
+		log.Printf("Using OpenAI compatible API (%s) for user %s in thread %s", modelCfg.OpenAI.ModelName, userID, threadID)
+		responseText, elapsed, err := c.getOpenAIResponse(userID, threadID, message, fullInput, modelCfg.OpenAI)
+		if err != nil {
+			errorLogger.Printf("OpenAI API call failed for user %s in thread %s: %v", userID, threadID, err)
+			return "", elapsed, modelCfg.OpenAI.ModelName, fmt.Errorf("OpenAI APIからのエラー: %w", err)
+		}
+		return responseText, elapsed, modelCfg.OpenAI.ModelName, nil
 	}
 
 	log.Printf("Using Gemini (%s) for user %s", modelCfg.ModelName, userID)

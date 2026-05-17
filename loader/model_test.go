@@ -39,6 +39,12 @@ func TestLoadModelConfig(t *testing.T) {
 			"enabled": false,
 			"api_endpoint": "",
 			"model_name": ""
+		},
+		"openai": {
+			"enabled": false,
+			"api_endpoint": "",
+			"model_name": "",
+			"api_key": ""
 		}
 	}`
 	validPath := createTestConfigFile(t, tempDir, "valid.json", validJSON)

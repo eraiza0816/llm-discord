@@ -24,13 +24,23 @@ type LLMProvider int
 const (
 	ProviderGemini LLMProvider = iota
 	ProviderOllama
+	ProviderOpenAI
 )
 
 // ModelSelection はLLM選択結果を表します。
 type ModelSelection struct {
-	Provider LLMProvider
+	Provider  LLMProvider
 	OllamaCfg OllamaConfig // ProviderOllama の場合のみ有効
+	OpenAICfg OpenAIConfig // ProviderOpenAI の場合のみ有効
 	GeminiModelName string // ProviderGemini の場合のモデル名
+}
+
+// OpenAIConfig はOpenAI互換APIの設定を表します。
+type OpenAIConfig struct {
+	Enabled     bool
+	APIEndpoint string
+	ModelName   string
+	APIKey      string
 }
 
 // OllamaConfig はOllamaの設定を表します。
