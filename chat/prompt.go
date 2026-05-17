@@ -10,13 +10,7 @@ import (
 
 func buildFullInput(systemPrompt, userMessage string, historyMgr history.HistoryManager, userID string, threadID string, timestamp string) string {
 	dateTimeInfo := fmt.Sprintf("Today is  %s .\n", timestamp)
-	toolInstructions := `
-【Function Calling Rules】
-You can use the following tools (functions). Select the appropriate function based on the user's request and return a FunctionCall.
-- get_url_content: Retrieves the main text content of the specified URL. Use when the user mentions a URL or wants to know the content of a web page. When the content of a URL is retrieved using 'get_url_content', summarize that content and use it to answer the user's question or provide relevant information based on the user's context.
-
-If a FunctionCall is executed and its result (FunctionResponse) is provided, use that information to generate the final response to the user.
-`
+	toolInstructions := ""
 	historyText := ""
 	if historyMgr != nil {
 		messages, err := historyMgr.Get(userID, threadID)

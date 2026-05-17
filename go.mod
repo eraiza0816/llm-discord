@@ -1,6 +1,6 @@
 module github.com/eraiza0816/llm-discord
 
-go 1.24.3
+go 1.26.2
 
 require (
 	github.com/PuerkitoBio/goquery v1.10.3

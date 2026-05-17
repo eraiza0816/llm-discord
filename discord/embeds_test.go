@@ -66,13 +66,24 @@ func TestSplitToEmbedFields(t *testing.T) {
 			expectedValues:    []string{strings.Repeat("あ", 1024), strings.Repeat("い", 1024)},
 		},
 		{
-			name:              "String exceeding total length limit",
+			name:              "String exactly fitting total length limit",
 			inputText:         strings.Repeat("a", 1024) + strings.Repeat("b", 1024) + strings.Repeat("c", 1024),
 			expectedNumFields: 3,
 			expectedValues: []string{
 				strings.Repeat("a", 1024),
 				strings.Repeat("b", 1024),
-				strings.Repeat("c", 3000-1024-1024-3) + "...",
+				strings.Repeat("c", 1024), // maxTotalLength=3500, 1024+1024+1024=3072 <= 3500 なので全文字収まる
+			},
+		},
+		{
+			name:              "String exceeding total length limit with truncation",
+			inputText:         strings.Repeat("a", 1024) + strings.Repeat("b", 1024) + strings.Repeat("c", 2000),
+			expectedNumFields: 4,
+			expectedValues: []string{
+				strings.Repeat("a", 1024),
+				strings.Repeat("b", 1024),
+				strings.Repeat("c", 1024),
+				strings.Repeat("c", 3500-1024-1024-1024-3) + "...", // maxTotalLength=3500, 残り=3500-3072=428
 			},
 		},
 	}

@@ -34,7 +34,9 @@ func (m *ModelConfig) GetPromptByUser(username string) string {
 		if prompt, exists := m.Prompts[username]; exists {
 			return prompt
 		}
-		return m.Prompts["default"]
+		if defaultPrompt, exists := m.Prompts["default"]; exists && defaultPrompt != "" {
+			return defaultPrompt
+		}
 	}
 	return "You are a helpful assistant."
 }

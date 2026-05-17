@@ -25,14 +25,11 @@ type Service interface {
 }
 
 type Chat struct {
-	genaiClient      *genai.Client
-	genaiModel       *genai.GenerativeModel
-	urlReaderService URLReaderService
-	defaultPrompt    string
-	historyMgr       history.HistoryManager
-	tools            []*genai.Tool
-	modelConfig      *loader.ModelConfig
-	config           *config.Config
+	genaiClient  *genai.Client
+	genaiModel   *genai.GenerativeModel
+	historyMgr   history.HistoryManager
+	modelConfig  *loader.ModelConfig
+	config       *config.Config
 }
 
 func NewChat(cfg *config.Config, historyMgr history.HistoryManager) (Service, error) {
@@ -53,34 +50,12 @@ func NewChat(cfg *config.Config, historyMgr history.HistoryManager) (Service, er
 	}
 	genaiModel := genaiClient.GenerativeModel(initialGeminiModelName)
 
-	urlReaderService := NewURLReaderService()
-
-	urlReaderFuncDeclaration := urlReaderService.GetURLReaderFunctionDeclaration()
-
-	var allDeclarations []*genai.FunctionDeclaration
-	if urlReaderFuncDeclaration != nil {
-		allDeclarations = append(allDeclarations, urlReaderFuncDeclaration)
-	}
-
-	var tools []*genai.Tool
-	if len(allDeclarations) > 0 {
-		tools = []*genai.Tool{
-			{
-				FunctionDeclarations: allDeclarations,
-			},
-		}
-	}
-
-	genaiModel.Tools = tools
-
 	return &Chat{
-		genaiClient:      genaiClient,
-		genaiModel:       genaiModel,
-		urlReaderService: urlReaderService,
-		historyMgr:       historyMgr,
-		tools:            tools,
-		modelConfig:      initialModelCfg,
-		config:           cfg,
+		genaiClient:  genaiClient,
+		genaiModel:   genaiModel,
+		historyMgr:   historyMgr,
+		modelConfig:  initialModelCfg,
+		config:       cfg,
 	}, nil
 }
 
@@ -127,7 +102,7 @@ func (c *Chat) GetResponse(userID, threadID, username, message, timestamp, defau
 
 	log.Printf("Using Gemini (%s) for user %s", modelCfg.ModelName, userID)
 	c.genaiModel = c.genaiClient.GenerativeModel(modelCfg.ModelName)
-	c.genaiModel.Tools = c.tools
+	// c.genaiModel.Tools はFunction Calling削除に伴い未設定
 
 	ctx := context.Background()
 	start := time.Now()
@@ -143,7 +118,7 @@ func (c *Chat) GetResponse(userID, threadID, username, message, timestamp, defau
 			if modelCfg.SecondaryModelName != "" {
 				log.Printf("Attempting retry with secondary model: %s", modelCfg.SecondaryModelName)
 				secondaryModel := c.genaiClient.GenerativeModel(modelCfg.SecondaryModelName)
-				secondaryModel.Tools = c.tools
+				// secondaryModel.Tools はFunction Calling削除に伴い未設定
 
 				startSecondary := time.Now()
 				resp, err = secondaryModel.GenerateContent(ctx, genai.Text(fullInput))
@@ -174,11 +149,8 @@ func (c *Chat) GetResponse(userID, threadID, username, message, timestamp, defau
 			return "", elapsed, modelCfg.ModelName, fmt.Errorf("Gemini APIクォータ超過、フォールバック先なし: %w", err)
 
 		} else {
-			logMessage := fmt.Sprintf("Gemini API error for model %s. Input: %s, Error: %v", modelCfg.ModelName, fullInput, err)
-			if gapiErr, ok := err.(*googleapi.Error); ok {
-				logMessage += fmt.Sprintf(", API Error Body: %s, API Error Headers: %v", gapiErr.Body, gapiErr.Header)
-			}
-			errorLogger.Printf(logMessage)
+			// 非定数フォーマット文字列の問題を修正: 固定のフォーマット文字列+引数としてログメッセージを渡す
+			errorLogger.Printf("Gemini API error: input=%q err=%v", fullInput, err)
 			return "", elapsed, modelCfg.ModelName, fmt.Errorf("Gemini APIからのエラー: %w", err)
 		}
 	}
@@ -200,16 +172,9 @@ HandleResponse:
 					fn := v
 					functionCallProcessed = true
 
-					if fn.Name == "get_url_content" {
-						url, ok := fn.Args["url"].(string)
-						if !ok {
-							toolErr = fmt.Errorf("get_url_content の引数 'url' がstring型ではありません")
-							errorLogger.Printf("Invalid argument type for get_url_content: %v", fn.Args["url"])
-							toolResult = fmt.Sprintf("関数の引数エラー: %v", toolErr)
-						} else {
-							toolResult, toolErr = c.urlReaderService.GetURLContentAsText(url)
-						}
-					}
+					// URL読み取り機能は削除されました
+					errorLogger.Printf("Unknown function call: %s", fn.Name)
+					toolResult = fmt.Sprintf("不明な関数呼び出し: %s", fn.Name)
 
 					if toolErr != nil {
 						errorLogger.Printf("Error handling function call %s: %v", fn.Name, toolErr)

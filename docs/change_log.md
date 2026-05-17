@@ -1,4 +1,12 @@
 ## 変更履歴
+- 2026/05/18: URL読み取り機能 (`get_url_content` Function Calling / `chat/url_reader_service.go`) を削除。
+    - `chat/url_reader_service.go` を削除。
+    - `chat/chat.go`: `urlReaderService` フィールド、初期化コード、`get_url_content` ハンドリング処理を削除。
+    - `chat/prompt.go`: `toolInstructions` から `get_url_content` の説明文を削除。
+- 2026/05/18: リファクタリング計画書 `docs/refactoring_plan.md` を作成。
+    - コード全体のアーキテクチャ分析を実施。
+    - 8つの問題点を特定し、重大度別に分類。
+    - 3フェーズに分けた改善計画を策定。
 - 2025/12/19: 天気予報機能およびzutool連携機能を削除。
     - `chat/weather.go` を削除し、天気予報、頭痛予報、地点検索、Otenki ASP情報の取得機能を廃止。
     - `chat/chat.go`: `WeatherService` への依存を削除し、Function Calling の振り分けロジックを修正。
