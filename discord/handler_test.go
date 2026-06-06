@@ -1,6 +1,7 @@
 package discord
 
 import (
+	"context"
 	"errors"
 	"io"
 	"log"
@@ -21,8 +22,8 @@ type MockChatService struct {
 	mock.Mock
 }
 
-func (m *MockChatService) GetResponse(userID, threadID, username, message, timestamp, prompt string, isBot bool) (string, float64, string, error) {
-	args := m.Called(userID, threadID, username, message, timestamp, prompt, isBot)
+func (m *MockChatService) GetResponse(ctx context.Context, userID, threadID, username, message, timestamp, prompt string, isBot bool) (string, float64, string, error) {
+	args := m.Called(ctx, userID, threadID, username, message, timestamp, prompt, isBot)
 	return args.String(0), args.Get(1).(float64), args.String(2), args.Error(3)
 }
 
@@ -122,7 +123,7 @@ func TestHandleMessageEvent(t *testing.T) {
 				Timestamp: time.Now(),
 			},
 		}
-		mockChatSvc.On("GetResponse", "user_id", "dm_channel_id", "user", "hello", mock.Anything, "default prompt", false).Return("response", 1.0, "model", nil).Once()
+		mockChatSvc.On("GetResponse", mock.Anything, "user_id", "dm_channel_id", "user", "hello", mock.Anything, "default prompt", false).Return("response", 1.0, "model", nil).Once()
 		mockSession.On("ChannelMessageSend", "dm_channel_id", "response").Return(&discordgo.Message{}, nil).Once()
 
 		handleMessageEvent(mockSession, m, mockChatSvc, mockCfg, MessageTypeDM, "dm_channel_id", false)
@@ -147,7 +148,7 @@ func TestHandleMessageEvent(t *testing.T) {
 				},
 			},
 		}
-		mockChatSvc.On("GetResponse", "user_id", "thread_id", "user", "hello again", mock.Anything, "default prompt", false).Return("response", 1.0, "model", nil).Once()
+		mockChatSvc.On("GetResponse", mock.Anything, "user_id", "thread_id", "user", "hello again", mock.Anything, "default prompt", false).Return("response", 1.0, "model", nil).Once()
 		mockSession.On("ChannelMessageSendReply", "channel_id", "response", m.Reference()).Return(&discordgo.Message{}, nil).Once()
 
 		handleMessageEvent(mockSession, m, mockChatSvc, mockCfg, MessageTypeReply, "thread_id", false)
@@ -165,7 +166,7 @@ func TestHandleMessageEvent(t *testing.T) {
 
 		handleMessageEvent(mockSession, m, mockChatSvc, mockCfg, MessageTypeSelf, "any_id", false)
 
-		mockChatSvc.AssertNotCalled(t, "GetResponse", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+		mockChatSvc.AssertNotCalled(t, "GetResponse", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 	})
 
 	t.Run("Normal message (log only)", func(t *testing.T) {
@@ -186,7 +187,7 @@ func TestHandleMessageEvent(t *testing.T) {
 
 		handleMessageEvent(mockSession, m, mockChatSvc, mockCfg, MessageTypeNormal, "channel_id", false)
 
-		mockChatSvc.AssertNotCalled(t, "GetResponse", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+		mockChatSvc.AssertNotCalled(t, "GetResponse", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 	})
 }
 

@@ -3,6 +3,7 @@ package chat
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,11 +11,11 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
 	"github.com/eraiza0816/llm-discord/loader"
 )
 
-func (c *Chat) getOllamaResponse(userID, threadID, message, fullInput string, ollamaCfg loader.OllamaConfig) (string, float64, error) {
-
+func (c *Chat) getOllamaResponse(ctx context.Context, userID, threadID, message, fullInput string, ollamaCfg loader.OllamaConfig) (string, float64, error) {
 	start := time.Now()
 	url := ollamaCfg.APIEndpoint
 	modelName := ollamaCfg.ModelName
@@ -31,13 +32,15 @@ func (c *Chat) getOllamaResponse(userID, threadID, message, fullInput string, ol
 		return "", 0, fmt.Errorf("OllamaリクエストペイロードのJSON作成に失敗: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonPayload))
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonPayload))
 	if err != nil {
 		return "", 0, fmt.Errorf("Ollamaリクエストの作成に失敗: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
+	client := &http.Client{
+		Timeout: 120 * time.Second,
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", 0, fmt.Errorf("Ollama APIへのリクエストに失敗: %w", err)

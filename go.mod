@@ -1,9 +1,8 @@
 module github.com/eraiza0816/llm-discord
 
-go 1.26.2
+go 1.26.4
 
 require (
-	github.com/PuerkitoBio/goquery v1.10.3
 	github.com/bwmarrin/discordgo v0.28.1
 	github.com/google/generative-ai-go v0.20.1
 	github.com/joho/godotenv v1.5.1
@@ -19,7 +18,6 @@ require (
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
 	cloud.google.com/go/longrunning v0.6.7 // indirect
-	github.com/andybalholm/cascadia v1.3.3 // indirect
 	github.com/apache/arrow-go/v18 v18.1.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect

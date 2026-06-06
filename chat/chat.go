@@ -20,7 +20,7 @@ import (
 var errorLogger *log.Logger
 
 type Service interface {
-	GetResponse(userID, threadID, username, message, timestamp, prompt string, isBot bool) (string, float64, string, error)
+	GetResponse(ctx context.Context, userID, threadID, username, message, timestamp, prompt string, isBot bool) (string, float64, string, error)
 	Close()
 }
 
@@ -59,7 +59,7 @@ func NewChat(cfg *config.Config, historyMgr history.HistoryManager) (Service, er
 	}, nil
 }
 
-func (c *Chat) GetResponse(userID, threadID, username, message, timestamp, defaultSystemPrompt string, isBot bool) (string, float64, string, error) {
+func (c *Chat) GetResponse(ctx context.Context, userID, threadID, username, message, timestamp, defaultSystemPrompt string, isBot bool) (string, float64, string, error) {
 	if isBot {
 		// Botとの会話履歴を取得
 		count, err := c.historyMgr.GetBotConversationCount(threadID, userID)
@@ -93,7 +93,7 @@ func (c *Chat) GetResponse(userID, threadID, username, message, timestamp, defau
 
 	if modelCfg.Ollama.Enabled {
 		log.Printf("Using Ollama (%s) for user %s in thread %s", modelCfg.Ollama.ModelName, userID, threadID)
-		responseText, elapsed, err := c.getOllamaResponse(userID, threadID, message, fullInput, modelCfg.Ollama)
+		responseText, elapsed, err := c.getOllamaResponse(ctx, userID, threadID, message, fullInput, modelCfg.Ollama)
 		if err != nil {
 			errorLogger.Printf("Ollama API call failed for user %s in thread %s: %v", userID, threadID, err)
 			return "", elapsed, modelCfg.Ollama.ModelName, fmt.Errorf("Ollama APIからのエラー: %w", err)
@@ -103,7 +103,7 @@ func (c *Chat) GetResponse(userID, threadID, username, message, timestamp, defau
 
 	if modelCfg.OpenAI.Enabled {
 		log.Printf("Using OpenAI compatible API (%s) for user %s in thread %s", modelCfg.OpenAI.ModelName, userID, threadID)
-		responseText, elapsed, err := c.getOpenAIResponse(userID, threadID, message, fullInput, modelCfg.OpenAI)
+		responseText, elapsed, err := c.getOpenAIResponse(ctx, userID, threadID, message, fullInput, modelCfg.OpenAI)
 		if err != nil {
 			errorLogger.Printf("OpenAI API call failed for user %s in thread %s: %v", userID, threadID, err)
 			return "", elapsed, modelCfg.OpenAI.ModelName, fmt.Errorf("OpenAI APIからのエラー: %w", err)
@@ -113,9 +113,7 @@ func (c *Chat) GetResponse(userID, threadID, username, message, timestamp, defau
 
 	log.Printf("Using Gemini (%s) for user %s", modelCfg.ModelName, userID)
 	c.genaiModel = c.genaiClient.GenerativeModel(modelCfg.ModelName)
-	// c.genaiModel.Tools はFunction Calling削除に伴い未設定
 
-	ctx := context.Background()
 	start := time.Now()
 	resp, err := c.genaiModel.GenerateContent(ctx, genai.Text(fullInput))
 	elapsed := float64(time.Since(start).Milliseconds())
@@ -146,7 +144,7 @@ func (c *Chat) GetResponse(userID, threadID, username, message, timestamp, defau
 
 			if modelCfg.Ollama.Enabled {
 				log.Printf("Falling back to Ollama (%s) for user %s in thread %s", modelCfg.Ollama.ModelName, userID, threadID)
-				responseText, ollamaElapsed, ollamaErr := c.getOllamaResponse(userID, threadID, message, fullInput, modelCfg.Ollama)
+				responseText, ollamaElapsed, ollamaErr := c.getOllamaResponse(ctx, userID, threadID, message, fullInput, modelCfg.Ollama)
 				if ollamaErr != nil {
 					errorLogger.Printf("Ollama fallback failed for user %s in thread %s: %v", userID, threadID, ollamaErr)
 					return "", elapsed, modelCfg.ModelName, fmt.Errorf("Gemini APIクォータ超過後、Ollamaフォールバックも失敗: (Gemini: %w), (Ollama: %v)", err, ollamaErr)

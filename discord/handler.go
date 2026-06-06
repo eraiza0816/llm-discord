@@ -1,6 +1,7 @@
 package discord
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -262,7 +263,7 @@ func handleDirectMessage(s DiscordSession, m *discordgo.MessageCreate, chatSvc c
 		return
 	}
 
-	responseText, _, _, err := chatSvc.GetResponse(m.Author.ID, m.ChannelID, m.Author.Username, m.Content, m.Timestamp.Format(time.RFC3339), cfg.Model.Prompts["default"], isBot)
+	responseText, _, _, err := chatSvc.GetResponse(context.Background(), m.Author.ID, m.ChannelID, m.Author.Username, m.Content, m.Timestamp.Format(time.RFC3339), cfg.Model.Prompts["default"], isBot)
 	if err != nil {
 		log.Printf("DM応答生成エラー: %v", err)
 		s.ChannelMessageSend(m.ChannelID, "応答の生成中にエラーが発生しました。")
@@ -326,7 +327,7 @@ func handleReplyToBot(s DiscordSession, m *discordgo.MessageCreate, chatSvc chat
 	}
 
 	// 応答を生成
-	responseText, _, _, err := chatSvc.GetResponse(m.Author.ID, threadID, m.Author.Username, m.Content, m.Timestamp.Format(time.RFC3339), cfg.Model.Prompts["default"], isBot)
+	responseText, _, _, err := chatSvc.GetResponse(context.Background(), m.Author.ID, threadID, m.Author.Username, m.Content, m.Timestamp.Format(time.RFC3339), cfg.Model.Prompts["default"], isBot)
 	if err != nil {
 		log.Printf("Botへの返信応答生成エラー: %v", err)
 		s.ChannelMessageSend(m.ChannelID, "応答の生成中にエラーが発生しました。")

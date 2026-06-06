@@ -3,6 +3,7 @@ package chat
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -39,7 +40,7 @@ type openaiChatRequest struct {
 
 // getOpenAIResponse は OpenAI 互換 API エンドポイント（v1/chat/completions）にリクエストを送信し、
 // ストリーミング応答からテキストを取得します。
-func (c *Chat) getOpenAIResponse(userID, threadID, message, fullInput string, openaiCfg loader.OpenAIConfig) (string, float64, error) {
+func (c *Chat) getOpenAIResponse(ctx context.Context, userID, threadID, message, fullInput string, openaiCfg loader.OpenAIConfig) (string, float64, error) {
 	start := time.Now()
 
 	if openaiCfg.APIEndpoint == "" || openaiCfg.ModelName == "" {
@@ -69,7 +70,7 @@ func (c *Chat) getOpenAIResponse(userID, threadID, message, fullInput string, op
 		return "", 0, fmt.Errorf("OpenAIリクエストペイロードのJSON作成に失敗: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonPayload))
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonPayload))
 	if err != nil {
 		return "", 0, fmt.Errorf("OpenAIリクエストの作成に失敗: %w", err)
 	}
@@ -80,7 +81,9 @@ func (c *Chat) getOpenAIResponse(userID, threadID, message, fullInput string, op
 		req.Header.Set("Authorization", "Bearer "+openaiCfg.APIKey)
 	}
 
-	client := &http.Client{}
+	client := &http.Client{
+		Timeout: 120 * time.Second,
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", 0, fmt.Errorf("OpenAI APIへのリクエストに失敗: %w", err)
