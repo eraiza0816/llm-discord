@@ -14,6 +14,8 @@ import (
 	"github.com/eraiza0816/llm-discord/history"
 )
 
+var errNoThreadID = errors.New("スレッドIDまたはチャンネルIDの取得に失敗しました")
+
 // chatSvc と historyMgr を引数に追加
 func setupHandlers(s *discordgo.Session, cfg *config.Config, chatSvc chat.Service, historyMgr history.HistoryManager) (history.HistoryManager, chat.Service, error) {
 	var err error
@@ -37,12 +39,7 @@ func setupHandlers(s *discordgo.Session, cfg *config.Config, chatSvc chat.Servic
 		}
 	}
 
-	// chat パッケージと discord パッケージでエラーロガーを共有
-	// errorLogger の取得は chatSvc が nil でないことを保証してから行う
-	var errorLogger *log.Logger
-	if chatSvc != nil {
-		errorLogger = chat.GetErrorLogger()
-	}
+	errorLogger := chat.GetErrorLogger()
 	SetErrorLogger(errorLogger)
 
 	err = os.MkdirAll("log", 0755)
@@ -62,58 +59,18 @@ func setupHandlers(s *discordgo.Session, cfg *config.Config, chatSvc chat.Servic
 	}
 	log.SetOutput(logFile)
 
+	dispatcher := newCommandDispatcher()
+	dispatcher.Register(&chatCommand{chatSvc: chatSvc, cfg: cfg})
+	dispatcher.Register(&resetCommand{historyMgr: historyMgr})
+	dispatcher.Register(&aboutCommand{cfg: cfg})
+	dispatcher.Register(&editCommand{cfg: cfg})
+
 	s.AddHandler(onReady)
 	s.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		if i.Type != discordgo.InteractionApplicationCommand {
 			return
 		}
-
-		var threadID string
-		if i.ChannelID != "" {
-			ch, err := s.State.Channel(i.ChannelID)
-			if err != nil {
-				ch, err = s.Channel(i.ChannelID)
-				if err != nil {
-					sendEphemeralErrorResponse(s, i, fmt.Errorf("チャンネル情報の取得に失敗しました: %w", err))
-					return
-				}
-			}
-
-			if ch.IsThread() {
-				threadID = ch.ID
-			} else {
-				threadID = i.ChannelID
-			}
-		} else if i.Message != nil && i.Message.ChannelID != "" {
-			ch, err := s.State.Channel(i.Message.ChannelID)
-			if err != nil {
-				ch, err = s.Channel(i.Message.ChannelID)
-				if err != nil {
-					sendEphemeralErrorResponse(s, i, fmt.Errorf("メッセージチャンネル情報の取得に失敗しました: %w", err))
-					return
-				}
-			}
-			if ch.IsThread() {
-				threadID = ch.ID
-			} else {
-				threadID = i.Message.ChannelID
-			}
-		} else {
-			sendEphemeralErrorResponse(s, i, errors.New("スレッドIDまたはチャンネルIDの取得に失敗しました"))
-			return
-		}
-
-
-		switch i.ApplicationCommandData().Name {
-		case "chat":
-			chatCommandHandler(s, i, chatSvc, threadID, cfg)
-		case "reset":
-			resetCommandHandler(s, i, historyMgr, threadID)
-		case "about":
-			aboutCommandHandler(s, i, cfg)
-		case "edit":
-			editCommandHandler(s, i, cfg)
-		}
+		dispatcher.Dispatch(s, i)
 	})
 	return historyMgr, chatSvc, nil
 }
