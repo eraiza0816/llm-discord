@@ -3,6 +3,7 @@ package history
 import (
 	"bufio"
 	"encoding/json"
+	"log"
 	"os"
 	"sync"
 	"time"
@@ -54,8 +55,8 @@ func StopAuditLogMonitor() {
 func processAuditLog(downloadDir string) {
 	file, err := os.Open(auditLogPath)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return
+		if !os.IsNotExist(err) {
+			log.Printf("Failed to open audit log file: %v", err)
 		}
 		return
 	}
@@ -65,6 +66,7 @@ func processAuditLog(downloadDir string) {
 	for scanner.Scan() {
 		var entry AuditLogEntry
 		if err := json.Unmarshal(scanner.Bytes(), &entry); err != nil {
+			log.Printf("Failed to parse audit log entry: %v", err)
 			continue
 		}
 
@@ -76,6 +78,7 @@ func processAuditLog(downloadDir string) {
 			if !found {
 				_, err := DownloadAndSaveFile(attachmentURL, downloadDir)
 				if err != nil {
+					log.Printf("Failed to download attachment: %v", err)
 				} else {
 					processedURLsLock.Lock()
 					processedURLs[attachmentURL] = struct{}{}
@@ -86,14 +89,15 @@ func processAuditLog(downloadDir string) {
 	}
 
 	if err := scanner.Err(); err != nil {
+		log.Printf("Error reading audit log file: %v", err)
 	}
 }
 
 func loadProcessedURLs() {
 	file, err := os.Open(processedURLsFile)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return
+		if !os.IsNotExist(err) {
+			log.Printf("Failed to open processed URLs file: %v", err)
 		}
 		return
 	}
@@ -102,14 +106,15 @@ func loadProcessedURLs() {
 	decoder := json.NewDecoder(file)
 	var urls []string
 	if err := decoder.Decode(&urls); err != nil {
+		log.Printf("Failed to decode processed URLs: %v", err)
 		return
 	}
 
 	processedURLsLock.Lock()
+	defer processedURLsLock.Unlock()
 	for _, u := range urls {
 		processedURLs[u] = struct{}{}
 	}
-	processedURLsLock.Unlock()
 }
 
 func saveProcessedURLs() {
@@ -123,6 +128,7 @@ func saveProcessedURLs() {
 
 	file, err := os.Create(processedURLsFile)
 	if err != nil {
+		log.Printf("Failed to create processed URLs file: %v", err)
 		return
 	}
 	defer file.Close()
@@ -130,5 +136,6 @@ func saveProcessedURLs() {
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")
 	if err := encoder.Encode(urls); err != nil {
+		log.Printf("Failed to encode processed URLs: %v", err)
 	}
 }

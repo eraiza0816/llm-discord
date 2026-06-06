@@ -31,7 +31,7 @@ func DownloadAndSaveFile(rawURL string, saveDir string) (string, error) {
 
 	contentType := resp.Header.Get("Content-Type")
 	if !strings.HasPrefix(contentType, "image/") {
-		return "", fmt.Errorf("(Content-Type: %s): %s", contentType, decodedURL)
+		return "", fmt.Errorf("URLのコンテンツタイプが画像ではありません (Content-Type: %s): %s", contentType, decodedURL)
 	}
 
 	if _, err := os.Stat(saveDir); os.IsNotExist(err) {
