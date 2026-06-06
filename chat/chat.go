@@ -25,11 +25,11 @@ type Service interface {
 }
 
 type Chat struct {
-	genaiClient  *genai.Client
-	genaiModel   *genai.GenerativeModel
-	historyMgr   history.HistoryManager
-	modelConfig  *loader.ModelConfig
-	config       *config.Config
+	genaiClient *genai.Client
+	genaiModel  *genai.GenerativeModel
+	historyMgr  history.HistoryManager
+	modelConfig *loader.ModelConfig
+	config      *config.Config
 }
 
 func NewChat(cfg *config.Config, historyMgr history.HistoryManager) (Service, error) {
@@ -51,24 +51,20 @@ func NewChat(cfg *config.Config, historyMgr history.HistoryManager) (Service, er
 	genaiModel := genaiClient.GenerativeModel(initialGeminiModelName)
 
 	return &Chat{
-		genaiClient:  genaiClient,
-		genaiModel:   genaiModel,
-		historyMgr:   historyMgr,
-		modelConfig:  initialModelCfg,
-		config:       cfg,
+		genaiClient: genaiClient,
+		genaiModel:  genaiModel,
+		historyMgr:  historyMgr,
+		modelConfig: initialModelCfg,
+		config:      cfg,
 	}, nil
 }
 
 func (c *Chat) GetResponse(ctx context.Context, userID, threadID, username, message, timestamp, defaultSystemPrompt string, isBot bool) (string, float64, string, error) {
 	if isBot {
-		// Botとの会話履歴を取得
 		count, err := c.historyMgr.GetBotConversationCount(threadID, userID)
 		if err != nil {
 			errorLogger.Printf("Failed to get bot conversation count: %v", err)
-			// エラーが発生しても処理は続行するが、ログには残す
 		}
-
-		// 3回以上会話している場合は応答しない
 		if count >= 3 {
 			log.Printf("Botとの会話が3回に達したため、応答を中断します。UserID: %s, ThreadID: %s", userID, threadID)
 			return "", 0, "", nil
@@ -76,41 +72,43 @@ func (c *Chat) GetResponse(ctx context.Context, userID, threadID, username, mess
 	}
 
 	modelCfg := c.modelConfig
-	log.Printf("DEBUG modelCfg: Ollama.Enabled=%v, OpenAI.Enabled=%v, OpenAI.Endpoint=%q, OpenAI.Model=%q, Ollama.Enabled=%v",
-		modelCfg.Ollama.Enabled, modelCfg.OpenAI.Enabled, modelCfg.OpenAI.APIEndpoint, modelCfg.OpenAI.ModelName, modelCfg.Ollama.Enabled)
 	if isBot && modelCfg.Ollama.Enabled {
-		// Botの場合はOllamaを強制的に使用する（Ollamaが有効な場合のみ）
 		log.Printf("Botとの対話のため、Ollamaモデルを強制的に使用します。UserID: %s", userID)
-		// Ollama.Enabled は既に true なのでそのまま進む
 	}
 
 	currentSystemPrompt := modelCfg.GetPromptByUser(username)
-	// log.Printf("System prompt for user %s: %s", username, currentSystemPrompt)
-
-
-	// prompt.go の buildFullInput を使用して、LLMへの完全な入力文字列を構築
 	fullInput := buildFullInput(currentSystemPrompt, message, c.historyMgr, userID, threadID, timestamp)
 
 	if modelCfg.Ollama.Enabled {
-		log.Printf("Using Ollama (%s) for user %s in thread %s", modelCfg.Ollama.ModelName, userID, threadID)
-		responseText, elapsed, err := c.getOllamaResponse(ctx, userID, threadID, message, fullInput, modelCfg.Ollama)
-		if err != nil {
-			errorLogger.Printf("Ollama API call failed for user %s in thread %s: %v", userID, threadID, err)
-			return "", elapsed, modelCfg.Ollama.ModelName, fmt.Errorf("Ollama APIからのエラー: %w", err)
-		}
-		return responseText, elapsed, modelCfg.Ollama.ModelName, nil
+		return c.invokeOllama(ctx, userID, threadID, message, fullInput, modelCfg)
 	}
-
 	if modelCfg.OpenAI.Enabled {
-		log.Printf("Using OpenAI compatible API (%s) for user %s in thread %s", modelCfg.OpenAI.ModelName, userID, threadID)
-		responseText, elapsed, err := c.getOpenAIResponse(ctx, userID, threadID, message, fullInput, modelCfg.OpenAI)
-		if err != nil {
-			errorLogger.Printf("OpenAI API call failed for user %s in thread %s: %v", userID, threadID, err)
-			return "", elapsed, modelCfg.OpenAI.ModelName, fmt.Errorf("OpenAI APIからのエラー: %w", err)
-		}
-		return responseText, elapsed, modelCfg.OpenAI.ModelName, nil
+		return c.invokeOpenAI(ctx, userID, threadID, message, fullInput, modelCfg)
 	}
+	return c.invokeGemini(ctx, userID, threadID, message, fullInput, modelCfg)
+}
 
+func (c *Chat) invokeOllama(ctx context.Context, userID, threadID, message, fullInput string, modelCfg *loader.ModelConfig) (string, float64, string, error) {
+	log.Printf("Using Ollama (%s) for user %s in thread %s", modelCfg.Ollama.ModelName, userID, threadID)
+	responseText, elapsed, err := c.getOllamaResponse(ctx, userID, threadID, message, fullInput, modelCfg.Ollama)
+	if err != nil {
+		errorLogger.Printf("Ollama API call failed for user %s in thread %s: %v", userID, threadID, err)
+		return "", elapsed, modelCfg.Ollama.ModelName, fmt.Errorf("Ollama APIからのエラー: %w", err)
+	}
+	return responseText, elapsed, modelCfg.Ollama.ModelName, nil
+}
+
+func (c *Chat) invokeOpenAI(ctx context.Context, userID, threadID, message, fullInput string, modelCfg *loader.ModelConfig) (string, float64, string, error) {
+	log.Printf("Using OpenAI compatible API (%s) for user %s in thread %s", modelCfg.OpenAI.ModelName, userID, threadID)
+	responseText, elapsed, err := c.getOpenAIResponse(ctx, userID, threadID, message, fullInput, modelCfg.OpenAI)
+	if err != nil {
+		errorLogger.Printf("OpenAI API call failed for user %s in thread %s: %v", userID, threadID, err)
+		return "", elapsed, modelCfg.OpenAI.ModelName, fmt.Errorf("OpenAI APIからのエラー: %w", err)
+	}
+	return responseText, elapsed, modelCfg.OpenAI.ModelName, nil
+}
+
+func (c *Chat) invokeGemini(ctx context.Context, userID, threadID, message, fullInput string, modelCfg *loader.ModelConfig) (string, float64, string, error) {
 	log.Printf("Using Gemini (%s) for user %s", modelCfg.ModelName, userID)
 	c.genaiModel = c.genaiClient.GenerativeModel(modelCfg.ModelName)
 
@@ -119,198 +117,181 @@ func (c *Chat) GetResponse(ctx context.Context, userID, threadID, username, mess
 	elapsed := float64(time.Since(start).Milliseconds())
 
 	if err != nil {
-		errorLogger.Printf("Initial Gemini API call failed for model %s: %v", modelCfg.ModelName, err)
-
-		if gapiErr, ok := err.(*googleapi.Error); ok && gapiErr.Code == 429 {
-			log.Printf("Quota exceeded for model %s. Attempting fallback...", modelCfg.ModelName)
-
-			if modelCfg.SecondaryModelName != "" {
-				log.Printf("Attempting retry with secondary model: %s", modelCfg.SecondaryModelName)
-				secondaryModel := c.genaiClient.GenerativeModel(modelCfg.SecondaryModelName)
-				// secondaryModel.Tools はFunction Calling削除に伴い未設定
-
-				startSecondary := time.Now()
-				resp, err = secondaryModel.GenerateContent(ctx, genai.Text(fullInput))
-				elapsed = float64(time.Since(startSecondary).Milliseconds())
-
-				if err == nil {
-					log.Printf("Successfully generated content with secondary model: %s", modelCfg.SecondaryModelName)
-					goto HandleResponse
-				}
-				errorLogger.Printf("Secondary Gemini API call failed for model %s: %v", modelCfg.SecondaryModelName, err)
-			} else {
-				log.Println("Secondary model name not configured.")
-			}
-
-			if modelCfg.Ollama.Enabled {
-				log.Printf("Falling back to Ollama (%s) for user %s in thread %s", modelCfg.Ollama.ModelName, userID, threadID)
-				responseText, ollamaElapsed, ollamaErr := c.getOllamaResponse(ctx, userID, threadID, message, fullInput, modelCfg.Ollama)
-				if ollamaErr != nil {
-					errorLogger.Printf("Ollama fallback failed for user %s in thread %s: %v", userID, threadID, ollamaErr)
-					return "", elapsed, modelCfg.ModelName, fmt.Errorf("Gemini APIクォータ超過後、Ollamaフォールバックも失敗: (Gemini: %w), (Ollama: %v)", err, ollamaErr)
-				}
-				log.Printf("Successfully generated content with Ollama fallback: %s for user %s in thread %s", modelCfg.Ollama.ModelName, userID, threadID)
-				return responseText, ollamaElapsed, modelCfg.Ollama.ModelName, nil
-			} else {
-				log.Println("Ollama is not enabled, cannot fallback.")
-			}
-
-			return "", elapsed, modelCfg.ModelName, fmt.Errorf("Gemini APIクォータ超過、フォールバック先なし: %w", err)
-
-		} else {
-			// 非定数フォーマット文字列の問題を修正: 固定のフォーマット文字列+引数としてログメッセージを渡す
-			errorLogger.Printf("Gemini API error: input=%q err=%v", fullInput, err)
-			return "", elapsed, modelCfg.ModelName, fmt.Errorf("Gemini APIからのエラー: %w", err)
-		}
+		return c.handleGeminiError(ctx, userID, threadID, message, fullInput, modelCfg, elapsed, err)
 	}
 
-HandleResponse:
-	if resp.Candidates != nil && len(resp.Candidates) > 0 {
-		candidate := resp.Candidates[0]
-		if candidate.Content != nil && len(candidate.Content.Parts) > 0 {
-			var functionCallProcessed bool
-			var llmIntroText strings.Builder
-			var toolResult string
-			var toolErr error
+	return c.processGeminiResponse(ctx, userID, threadID, message, modelCfg, resp, start, elapsed)
+}
 
-			for i, part := range candidate.Content.Parts {
-				switch v := part.(type) {
-				case genai.Text:
-					llmIntroText.WriteString(string(v))
-				case genai.FunctionCall:
-					fn := v
-					functionCallProcessed = true
+func (c *Chat) handleGeminiError(ctx context.Context, userID, threadID, message, fullInput string, modelCfg *loader.ModelConfig, elapsed float64, err error) (string, float64, string, error) {
+	errorLogger.Printf("Initial Gemini API call failed for model %s: %v", modelCfg.ModelName, err)
 
-					// URL読み取り機能は削除されました
-					errorLogger.Printf("Unknown function call: %s", fn.Name)
-					toolResult = fmt.Sprintf("不明な関数呼び出し: %s", fn.Name)
+	gapiErr, isQuotaExceeded := err.(*googleapi.Error)
+	if !isQuotaExceeded || gapiErr.Code != 429 {
+		errorLogger.Printf("Gemini API error: input=%q err=%v", fullInput, err)
+		return "", elapsed, modelCfg.ModelName, fmt.Errorf("Gemini APIからのエラー: %w", err)
+	}
 
-					if toolErr != nil {
-						errorLogger.Printf("Error handling function call %s: %v", fn.Name, toolErr)
-						toolResult = fmt.Sprintf("関数の処理中にエラーが発生しました: %v", toolErr)
-						toolErr = nil
-					}
-				default:
-					errorLogger.Printf("Part %d is an unexpected type: %T", i, v)
-				}
-			}
+	log.Printf("Quota exceeded for model %s. Attempting fallback...", modelCfg.ModelName)
 
-			if functionCallProcessed {
-				// Function Calling が実行された場合、その結果 (toolResult) を用いて
-				// LLMに再度問い合わせを行い、最終的な自然言語の応答を生成する。
-
-				// 呼び出された関数名を取得
-				var calledFuncName string
-				for _, part := range candidate.Content.Parts {
-					if fc, ok := part.(genai.FunctionCall); ok {
-						calledFuncName = fc.Name
-						break
-					}
-				}
-
-				if calledFuncName == "" {
-					errorLogger.Printf("Could not determine called function name from candidate parts.")
-					return "関数呼び出し名の取得に失敗しました。", elapsed, modelCfg.ModelName, fmt.Errorf("関数呼び出し名の取得に失敗")
-				}
-
-				// 次のLLM呼び出しのためのpartsを構築する。
-				// 構成:
-				// 1. ユーザーの最新のメッセージ
-				// 2. LLMの最初の応答から FunctionCall の部分のみ
-				// 3. ツールの実行結果 (genai.FunctionResponse)
-				var partsForNextTurn []genai.Part
-				partsForNextTurn = append(partsForNextTurn, genai.Text(message)) // ユーザーの最新メッセージ
-
-				var functionCallPart genai.FunctionCall
-				for _, part := range candidate.Content.Parts {
-					if fc, ok := part.(genai.FunctionCall); ok {
-						functionCallPart = fc
-						break
-					}
-				}
-
-				if functionCallPart.Name == "" {
-					errorLogger.Printf("Could not extract FunctionCall from candidate.Content.Parts for second call. Using full candidate.Content.Parts.")
-					// FunctionCallが見つからなかった場合は、元のpartsForNextTurnのロジックにフォールバック（あるいはエラー）
-					// ここでは元のロジック（candidate.Content.Parts全体）を使う
-					partsForNextTurn = append(partsForNextTurn, candidate.Content.Parts...)
-				} else {
-					// LLMの最初の応答に含まれる導入テキスト（もしあれば）も追加した方が自然かもしれない。
-					// 一旦、FunctionCallのみに絞ってみる。
-					// 導入テキストも必要な場合は、candidate.Content.Parts全体を使うか、Text部分も抽出する。
-					// llmIntroText を使う手もある。
-					if llmIntroText.Len() > 0 {
-						partsForNextTurn = append(partsForNextTurn, genai.Text(llmIntroText.String()))
-					}
-					partsForNextTurn = append(partsForNextTurn, functionCallPart)
-				}
-
-
-				// LLMに渡すtoolResultの長さを制限
-				const maxToolResultForLLM = 1800
-				toolResultForLLM := toolResult
-				if len(toolResultForLLM) > maxToolResultForLLM {
-					toolResultForLLM = toolResultForLLM[:maxToolResultForLLM] + "..."
-				}
-
-				// ツールの実行結果をFunctionResponseとして追加
-				partsForNextTurn = append(partsForNextTurn, genai.FunctionResponse{
-					Name: calledFuncName,
-					Response: map[string]interface{}{
-						"content": toolResultForLLM,
-					},
-				})
-
-				// Function Callingの結果を踏まえて、再度LLMにコンテンツ生成を要求
-				secondResp, err := c.genaiModel.GenerateContent(ctx, partsForNextTurn...)
-				elapsed += float64(time.Since(start).Milliseconds()) // 時間を加算
-
-				if err != nil {
-					errorLogger.Printf("Error in second GenerateContent call after function execution: %v", err)
-					return fmt.Sprintf("ツールの実行結果: %s (LLMによる最終応答生成に失敗: %v)", toolResult, err), elapsed, modelCfg.ModelName, nil
-				}
-
-				finalResponseText := getResponseText(secondResp)
-				if finalResponseText == "" {
-					finalResponseText = "ツールは実行されましたが、LLMからの追加の応答はありませんでした。"
-					if toolResult != "" {
-						finalResponseText += fmt.Sprintf(" ツールの結果: %s", toolResult)
-					}
-				}
-
-				// (オプション) LLMからの導入テキストと最終応答を結合することも可能だが、現在はしていない。
-
-				// 最終応答があれば履歴に追加
-				if finalResponseText != "" {
-					c.historyMgr.Add(userID, threadID, message, finalResponseText)
-				} else {
-					errorLogger.Printf("Skipping history add for user %s in thread %s because finalResponseText is empty after function call.", userID, threadID)
-				}
-				return finalResponseText, elapsed, modelCfg.ModelName, nil
-			}
-
-			responseText := llmIntroText.String()
-			if responseText == "" {
-				responseText = getResponseText(resp)
-			}
-
-			if responseText != "" {
-				c.historyMgr.Add(userID, threadID, message, responseText)
-		} else {
-			errorLogger.Printf("Skipping history add for user %s in thread %s because responseText is empty.", userID, threadID)
+	if modelCfg.SecondaryModelName != "" {
+		secResp, secElapsed, secErr := c.invokeSecondaryModel(ctx, fullInput, modelCfg)
+		if secErr == nil {
+			return c.processGeminiResponse(ctx, userID, threadID, message, modelCfg, secResp, time.Now(), secElapsed)
 		}
-		return responseText, elapsed, modelCfg.ModelName, nil
+		elapsed = secElapsed
+		err = secErr
+	} else {
+		log.Println("Secondary model name not configured.")
+	}
 
-	} else {
-		errorLogger.Println("Gemini response candidate content or parts are empty.")
+	if modelCfg.Ollama.Enabled {
+		log.Printf("Falling back to Ollama (%s) for user %s in thread %s", modelCfg.Ollama.ModelName, userID, threadID)
+		responseText, ollamaElapsed, ollamaErr := c.getOllamaResponse(ctx, userID, threadID, message, fullInput, modelCfg.Ollama)
+		if ollamaErr != nil {
+			errorLogger.Printf("Ollama fallback failed for user %s in thread %s: %v", userID, threadID, ollamaErr)
+			return "", elapsed, modelCfg.ModelName, fmt.Errorf("Gemini APIクォータ超過後、Ollamaフォールバックも失敗: (Gemini: %w), (Ollama: %v)", err, ollamaErr)
 		}
+		log.Printf("Successfully generated content with Ollama fallback: %s for user %s in thread %s", modelCfg.Ollama.ModelName, userID, threadID)
+		return responseText, ollamaElapsed, modelCfg.Ollama.ModelName, nil
+	}
+
+	log.Println("Ollama is not enabled, cannot fallback.")
+	return "", elapsed, modelCfg.ModelName, fmt.Errorf("Gemini APIクォータ超過、フォールバック先なし: %w", err)
+}
+
+func (c *Chat) invokeSecondaryModel(ctx context.Context, fullInput string, modelCfg *loader.ModelConfig) (*genai.GenerateContentResponse, float64, error) {
+	log.Printf("Attempting retry with secondary model: %s", modelCfg.SecondaryModelName)
+	secondaryModel := c.genaiClient.GenerativeModel(modelCfg.SecondaryModelName)
+
+	startSecondary := time.Now()
+	resp, err := secondaryModel.GenerateContent(ctx, genai.Text(fullInput))
+	elapsed := float64(time.Since(startSecondary).Milliseconds())
+
+	if err == nil {
+		log.Printf("Successfully generated content with secondary model: %s", modelCfg.SecondaryModelName)
 	} else {
+		errorLogger.Printf("Secondary Gemini API call failed for model %s: %v", modelCfg.SecondaryModelName, err)
+	}
+	return resp, elapsed, err
+}
+
+func (c *Chat) processGeminiResponse(ctx context.Context, userID, threadID, message string, modelCfg *loader.ModelConfig, resp *genai.GenerateContentResponse, start time.Time, elapsed float64) (string, float64, string, error) {
+	if resp.Candidates == nil || len(resp.Candidates) == 0 {
 		errorLogger.Println("Gemini response candidates are empty.")
+		return "応答を取得できませんでした。", elapsed, modelCfg.ModelName, nil
 	}
 
-	errorLogger.Println("No valid candidates found in Gemini response.")
-	responseText := "応答を取得できませんでした。"
+	candidate := resp.Candidates[0]
+	if candidate.Content == nil || len(candidate.Content.Parts) == 0 {
+		errorLogger.Println("Gemini response candidate content or parts are empty.")
+		return "応答を取得できませんでした。", elapsed, modelCfg.ModelName, nil
+	}
+
+	var functionCallProcessed bool
+	var llmIntroText strings.Builder
+	var toolResult string
+
+	for i, part := range candidate.Content.Parts {
+		switch v := part.(type) {
+		case genai.Text:
+			llmIntroText.WriteString(string(v))
+		case genai.FunctionCall:
+			functionCallProcessed = true
+			errorLogger.Printf("Unknown function call: %s", v.Name)
+			toolResult = fmt.Sprintf("不明な関数呼び出し: %s", v.Name)
+		default:
+			errorLogger.Printf("Part %d is an unexpected type: %T", i, v)
+		}
+	}
+
+	if functionCallProcessed {
+		return c.handleFunctionCall(ctx, userID, threadID, message, modelCfg, candidate, toolResult, llmIntroText, start, elapsed)
+	}
+
+	responseText := llmIntroText.String()
+	if responseText == "" {
+		responseText = getResponseText(resp)
+	}
+
+	if responseText != "" {
+		c.historyMgr.Add(userID, threadID, message, responseText)
+	} else {
+		errorLogger.Printf("Skipping history add for user %s in thread %s because responseText is empty.", userID, threadID)
+	}
 	return responseText, elapsed, modelCfg.ModelName, nil
+}
+
+func (c *Chat) handleFunctionCall(ctx context.Context, userID, threadID, message string, modelCfg *loader.ModelConfig, candidate *genai.Candidate, toolResult string, llmIntroText strings.Builder, start time.Time, elapsed float64) (string, float64, string, error) {
+	var calledFuncName string
+	for _, part := range candidate.Content.Parts {
+		if fc, ok := part.(genai.FunctionCall); ok {
+			calledFuncName = fc.Name
+			break
+		}
+	}
+
+	if calledFuncName == "" {
+		errorLogger.Printf("Could not determine called function name from candidate parts.")
+		return "関数呼び出し名の取得に失敗しました。", elapsed, modelCfg.ModelName, fmt.Errorf("関数呼び出し名の取得に失敗")
+	}
+
+	var partsForNextTurn []genai.Part
+	partsForNextTurn = append(partsForNextTurn, genai.Text(message))
+
+	var functionCallPart genai.FunctionCall
+	for _, part := range candidate.Content.Parts {
+		if fc, ok := part.(genai.FunctionCall); ok {
+			functionCallPart = fc
+			break
+		}
+	}
+
+	if functionCallPart.Name == "" {
+		errorLogger.Printf("Could not extract FunctionCall from candidate.Content.Parts for second call. Using full candidate.Content.Parts.")
+		partsForNextTurn = append(partsForNextTurn, candidate.Content.Parts...)
+	} else {
+		if llmIntroText.Len() > 0 {
+			partsForNextTurn = append(partsForNextTurn, genai.Text(llmIntroText.String()))
+		}
+		partsForNextTurn = append(partsForNextTurn, functionCallPart)
+	}
+
+	const maxToolResultForLLM = 1800
+	toolResultForLLM := toolResult
+	if len(toolResultForLLM) > maxToolResultForLLM {
+		toolResultForLLM = toolResultForLLM[:maxToolResultForLLM] + "..."
+	}
+
+	partsForNextTurn = append(partsForNextTurn, genai.FunctionResponse{
+		Name: calledFuncName,
+		Response: map[string]interface{}{
+			"content": toolResultForLLM,
+		},
+	})
+
+	secondResp, err := c.genaiModel.GenerateContent(ctx, partsForNextTurn...)
+	elapsed += float64(time.Since(start).Milliseconds())
+
+	if err != nil {
+		errorLogger.Printf("Error in second GenerateContent call after function execution: %v", err)
+		return fmt.Sprintf("ツールの実行結果: %s (LLMによる最終応答生成に失敗: %v)", toolResult, err), elapsed, modelCfg.ModelName, nil
+	}
+
+	finalResponseText := getResponseText(secondResp)
+	if finalResponseText == "" {
+		finalResponseText = "ツールは実行されましたが、LLMからの追加の応答はありませんでした。"
+		if toolResult != "" {
+			finalResponseText += fmt.Sprintf(" ツールの結果: %s", toolResult)
+		}
+	}
+
+	if finalResponseText != "" {
+		c.historyMgr.Add(userID, threadID, message, finalResponseText)
+	} else {
+		errorLogger.Printf("Skipping history add for user %s in thread %s because finalResponseText is empty after function call.", userID, threadID)
+	}
+	return finalResponseText, elapsed, modelCfg.ModelName, nil
 }
 
 func (c *Chat) Close() {
